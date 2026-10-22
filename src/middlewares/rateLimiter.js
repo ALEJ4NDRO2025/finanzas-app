@@ -15,4 +15,11 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
-module.exports = { apiLimiter, authLimiter };
+// Creación de cuentas: cuenta TODAS las peticiones (frena bots y enumeración masiva de correos).
+const registerLimiter = rateLimit({
+  ...common,
+  windowMs: 60 * 60 * 1000,
+  limit: config.isTest ? 1000 : 5,
+});
+
+module.exports = { apiLimiter, authLimiter, registerLimiter };

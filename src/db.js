@@ -64,4 +64,24 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 `);
 
+CREATE_EXTRA();
+function CREATE_EXTRA() {
+  // Intentos fallidos por correo+IP y por correo (no depende de que la cuenta exista → no revela correos).
+  db.exec(`CREATE TABLE IF NOT EXISTS login_attempts (
+    key TEXT PRIMARY KEY, fails INTEGER NOT NULL DEFAULT 0, window_start INTEGER NOT NULL, locked_until INTEGER
+  );`);
+  // Migración: momento en que se rotó cada refresh token (para tolerar dos pestañas renovando a la vez).
+  const cols = db.prepare('PRAGMA table_info(refresh_tokens)').all().map((c) => c.name);
+  if (!cols.includes('rotated_at')) db.exec('ALTER TABLE refresh_tokens ADD COLUMN rotated_at INTEGER');
+}
+
+// Limpieza: tokens vencidos e intentos viejos no se acumulan para siempre.
+function purge() {
+  const t = Math.floor(Date.now() / 1000);
+  db.prepare('DELETE FROM refresh_tokens WHERE expires_at < ?').run(t);
+  db.prepare('DELETE FROM login_attempts WHERE window_start < ? AND (locked_until IS NULL OR locked_until < ?)').run(t - 86400, t);
+}
+purge();
+setInterval(purge, 60 * 60 * 1000).unref();
+
 module.exports = db;

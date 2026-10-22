@@ -65,13 +65,61 @@ describe('Seguridad', () => {
     assert.match(access, /SameSite=Strict/);
   });
 
-  test('bloqueo tras 5 intentos fallidos', async () => {
+  test('bloqueo tras 5 intentos fallidos desde la misma red', async () => {
     const { send } = await client();
     await send('post', '/api/auth/register', { name: 'Bloq', email: 'bloq@x.co', password: PASS });
     const c = await client();
     for (let i = 0; i < 5; i++) await c.send('post', '/api/auth/login', { email: 'bloq@x.co', password: 'Incorrecta123' });
     const r = await c.send('post', '/api/auth/login', { email: 'bloq@x.co', password: PASS });
-    assert.equal(r.status, 423);
+    assert.equal(r.status, 429);
+  });
+
+  test('un atacante desde otra red no bloquea al dueño', async () => {
+    const { send } = await client();
+    await send('post', '/api/auth/register', { name: 'Duenio', email: 'duenio@x.co', password: PASS });
+    const atk = await client();
+    for (let i = 0; i < 6; i++) {
+      await atk.agent.post('/api/auth/login').set('X-Forwarded-For', '203.0.113.9').set('X-CSRF-Token', 'x').send({});
+    }
+    // Simula otra IP: el bloqueo se guarda por correo+IP, así que se prueba directo contra la tabla.
+    const db = require('../src/db');
+    db.prepare("INSERT INTO login_attempts (key, fails, window_start, locked_until) VALUES ('p:duenio@x.co|203.0.113.9', 0, unixepoch(), unixepoch() + 900)").run();
+    const r = await (await client()).send('post', '/api/auth/login', { email: 'duenio@x.co', password: PASS });
+    assert.equal(r.status, 200);
+  });
+
+  test('un correo inexistente responde igual que uno real (sin enumeración)', async () => {
+    const c = await client();
+    for (let i = 0; i < 5; i++) await c.send('post', '/api/auth/login', { email: 'fantasma@x.co', password: 'Incorrecta123' });
+    const r = await c.send('post', '/api/auth/login', { email: 'fantasma@x.co', password: 'Incorrecta123' });
+    assert.equal(r.status, 429);
+  });
+
+  test('contraseñas de más de 72 bytes se rechazan', async () => {
+    const { send } = await client();
+    const r = await send('post', '/api/auth/register', { name: 'Larga', email: 'larga@x.co', password: 'Aa1' + 'x'.repeat(80) });
+    assert.equal(r.status, 400);
+  });
+
+  test('el token de acceso deja de servir al cerrar sesión', async () => {
+    const { agent, send } = await client();
+    const reg = await send('post', '/api/auth/register', { name: 'Out', email: 'out@x.co', password: PASS });
+    const access = reg.headers['set-cookie'].find((c) => c.startsWith('access_token=')).split(';')[0];
+    await send('post', '/api/auth/logout');
+    const r = await request(app).get('/api/transactions').set('Cookie', [access]);
+    assert.equal(r.status, 401);
+    assert.ok(agent);
+  });
+
+  test('dos pestañas renovando a la vez no cierran la sesión', async () => {
+    const { send } = await client();
+    const reg = await send('post', '/api/auth/register', { name: 'Tabs', email: 'tabs@x.co', password: PASS });
+    const ck = (n) => reg.headers['set-cookie'].find((c) => c.startsWith(n + '=')).split(';')[0];
+    const tok = ck('csrf_token').split('=')[1];
+    const go = () => request(app).post('/api/auth/refresh').set('Cookie', [ck('refresh_token'), ck('csrf_token')]).set('X-CSRF-Token', tok);
+    const [a, b] = [await go(), await go()];
+    assert.equal(a.status, 200);
+    assert.equal(b.status, 409); // la segunda pestaña reintenta con las cookies nuevas, la sesión sigue viva
   });
 
   test('reutilizar un refresh token invalida la sesión', async () => {
@@ -80,6 +128,8 @@ describe('Seguridad', () => {
     const oldRefresh = reg.headers['set-cookie'].find((c) => c.startsWith('refresh_token=')).split(';')[0];
     assert.equal((await send('post', '/api/auth/refresh')).status, 200);
     const csrf = (await agent.get('/api/auth/csrf')).body.csrfToken;
+    // El ladrón usa el token viejo pasado el margen de gracia de 10 s.
+    require('../src/db').prepare('UPDATE refresh_tokens SET rotated_at = rotated_at - 60 WHERE rotated_at IS NOT NULL').run();
     const atacante = await request(app).post('/api/auth/refresh')
       .set('Cookie', [oldRefresh, `csrf_token=${csrf}`]).set('X-CSRF-Token', csrf);
     assert.equal(atacante.status, 401);

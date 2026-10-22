@@ -12,8 +12,6 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22"
-      - key: JWT_SECRET
-        generateValue: true # Render genera un secreto aleatorio
       - key: DB_PATH
         value: /var/data/finanzas.db
     disk:

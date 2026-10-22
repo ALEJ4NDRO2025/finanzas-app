@@ -3,6 +3,12 @@
 const Api = (() => {
   const readCookie = (name) => document.cookie.split('; ').find((c) => c.startsWith(name + '='))?.split('=')[1];
 
+  // Si varias peticiones vencen a la vez, comparten una sola renovación.
+  let refreshing = null;
+  const refresh = () => (refreshing ??= fetch('/api/auth/refresh', {
+    method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': readCookie('csrf_token') || '' },
+  }).then((r) => r.ok || r.status === 409).finally(() => { refreshing = null; }));
+
   async function call(method, url, body, retry = true) {
     const headers = { Accept: 'application/json' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -10,9 +16,8 @@ const Api = (() => {
     const res = await fetch(url, { method, headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body) });
 
     // Token de acceso vencido (15 min): se renueva una vez con el refresh token y se repite.
-    if (res.status === 401 && retry && !url.startsWith('/api/auth/')) {
-      const r = await call('POST', '/api/auth/refresh', undefined, false).catch(() => null);
-      if (r) return call(method, url, body, false);
+    if (res.status === 401 && retry && !/^\/api\/auth\/(refresh|login|register|logout)/.test(url)) {
+      if (await refresh().catch(() => false)) return call(method, url, body, false);
       location.reload();
     }
     if (res.status === 204) return null;
