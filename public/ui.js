@@ -7,6 +7,8 @@ const FinanzasUI = (() => {
     ingreso: ['Salario', 'Freelance', 'Ventas', 'Prima', 'Otros'],
   };
 
+  const PALETTE = ['#8b9cff', '#ffb86b', '#ff8fc7', '#6fd6ff', '#c8a6ff', '#ffd86b', '#7ee0c3', '#ff9f8f', '#b5e86b', '#f0a6ff', '#a3a5b8'];
+  const catColor = (c) => { if (CATS.ingreso.includes(c)) return '#5fd3a8'; const all = [...CATS.gasto, ...CATS.ingreso]; const i = all.indexOf(c); return PALETTE[(i >= 0 ? i : [...c].reduce((a, ch) => a + ch.charCodeAt(0), 0)) % PALETTE.length]; };
   const cop = (n) => '$\u00a0' + Math.round(n).toLocaleString('es-CO');
   const compact = (n) => (n >= 1e6 ? (n / 1e6).toLocaleString('es-CO', { maximumFractionDigits: 1 }) + ' M'
     : n >= 1e3 ? Math.round(n / 1e3) + ' mil' : String(n));
@@ -69,17 +71,17 @@ const FinanzasUI = (() => {
 
     function header() {
       return h('header', { class: 'top' },
-        h('div', { class: 'brand' }, h('h1', {}, 'Mis Finanzas'), opts.userName ? h('small', {}, opts.userName) : null),
-        h('div', { class: 'month' },
+        h('div', { class: 'brand' }, h('h1', {}, opts.userName ? `Hola, ${opts.userName.split(' ')[0]}` : 'Mis Finanzas'), h('small', {}, 'Mis Finanzas')),
+        h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, h('div', { class: 'month' },
           h('button', { class: 'icon-btn', 'aria-label': 'Mes anterior', onclick: () => { state.month = shiftMonth(state.month, -1); render(); } }, '‹'),
           h('strong', {}, monthName(state.month)),
           h('button', { class: 'icon-btn', 'aria-label': 'Mes siguiente', onclick: () => { state.month = shiftMonth(state.month, 1); render(); } }, '›'),
-          state.month !== thisMonth() ? h('button', { class: 'btn-ghost', onclick: () => { state.month = thisMonth(); render(); } }, 'Hoy') : null,
+          state.month !== thisMonth() ? h('button', { class: 'btn-ghost', onclick: () => { state.month = thisMonth(); render(); } }, 'Hoy') : null),
           opts.onLogout ? h('button', { class: 'btn-ghost', onclick: opts.onLogout }, 'Salir') : null));
     }
 
     function tabs() {
-      const t = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['presupuestos', 'Presupuestos'], ['metas', 'Metas de ahorro']];
+      const t = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['presupuestos', 'Presupuestos'], ['metas', 'Metas']];
       return h('nav', { class: 'tabs', role: 'tablist' }, t.map(([id, label]) =>
         h('button', { role: 'tab', 'aria-selected': String(state.tab === id), onclick: () => { state.tab = id; render(); } }, label)));
     }
@@ -117,7 +119,7 @@ const FinanzasUI = (() => {
 
     /* ---------- Gráficas ---------- */
     function trendChart(trend) {
-      const W = 600, H = 220, L = 54, B = 26, T = 12;
+      const W = 600, H = 240, L = 64, B = 30, T = 14;
       const max = Math.max(1, ...trend.flatMap((t) => [t.income, t.expense]));
       const y = (v) => T + (H - T - B) * (1 - v / max);
       const el = svg('svg', { viewBox: `0 0 ${W} ${H}`, class: 'chart', role: 'img', 'aria-label': 'Ingresos y gastos de los últimos 6 meses' });
@@ -129,8 +131,8 @@ const FinanzasUI = (() => {
       const band = (W - L) / trend.length, bw = Math.min(22, band / 3.2);
       trend.forEach((t, i) => {
         const cx = L + band * i + band / 2;
-        el.append(svg('rect', { x: cx - bw - 2, y: y(t.income), width: bw, height: Math.max(0, y(0) - y(t.income)), rx: 1, class: 'bar-in' }));
-        el.append(svg('rect', { x: cx + 2, y: y(t.expense), width: bw, height: Math.max(0, y(0) - y(t.expense)), rx: 1, class: 'bar-out' }));
+        el.append(svg('rect', { x: cx - bw - 2, y: y(t.income), width: bw, height: Math.max(0, y(0) - y(t.income)), rx: Math.min(6, bw / 2), class: 'bar-in' }));
+        el.append(svg('rect', { x: cx + 2, y: y(t.expense), width: bw, height: Math.max(0, y(0) - y(t.expense)), rx: Math.min(6, bw / 2), class: 'bar-out' }));
         const lab = svg('text', { x: cx, y: H - 8, 'text-anchor': 'middle' }); lab.textContent = monthName(t.month, true).replace('.', ''); el.append(lab);
       });
       return h('div', { style: 'overflow-x:auto' }, el);
@@ -140,9 +142,25 @@ const FinanzasUI = (() => {
       if (!byCategory.length) return h('div', { class: 'empty' }, 'Aún no hay gastos este mes.');
       const max = byCategory[0].total;
       return h('div', { class: 'list' }, byCategory.map((c) => h('div', { class: 'item' },
-        h('div', { class: 'item-head' }, h('span', {}, c.category),
-          h('span', { class: 'num' }, cop(c.total), h('span', { class: 'muted' }, ` · ${Math.round((c.total / total) * 100)}%`))),
-        h('div', { class: 'meter' }, h('span', { style: `width:${(c.total / max) * 100}%` })))));
+        h('div', { class: 'item-head' }, h('span', { class: 'cat-name' }, h('span', { class: 'cat-dot', style: `background:${catColor(c.category)}` }), c.category),
+          h('span', { class: 'num', style: 'font-weight:800' }, cop(c.total), h('span', { class: 'muted', style: 'font-weight:600' }, `  ${Math.round((c.total / total) * 100)}%`))),
+        h('div', { class: 'meter' }, h('span', { style: `width:${(c.total / max) * 100}%;background:${catColor(c.category)}` })))));
+    }
+
+    function balanceCard(s, gmf) {
+      const rings = svg('svg', { viewBox: '0 0 300 300', class: 'rings', 'aria-hidden': 'true' });
+      [140, 110, 80, 50].forEach((r) => rings.append(svg('circle', { cx: 150, cy: 150, r })));
+      const pct = s.income ? Math.round((s.balance / s.income) * 100) : null;
+      const [int] = [Math.abs(Math.round(s.balance)).toLocaleString('es-CO')];
+      return h('section', { class: `balance-card${s.balance < 0 ? ' negative' : ''}`, 'aria-label': 'Balance del mes' }, rings,
+        h('div', { class: 'card-top' }, h('span', {}, `Balance de ${monthName(state.month).split(' ')[0].toLowerCase()}`), h('span', {}, 'COP')),
+        h('div', {},
+          h('div', { class: 'big num' }, s.balance < 0 ? '−' : null, h('span', { class: 'cur' }, '$'), int),
+          h('div', { class: 'sub' }, pct === null ? 'Registra tu primer ingreso para ver cuánto ahorras' : pct >= 0 ? `Ahorras el ${pct}% de lo que entra` : 'Este mes gastaste más de lo que entró')),
+        h('div', { class: 'flows' },
+          h('div', { class: 'flow' }, h('span', {}, '↓ Entró'), h('span', { class: 'v num' }, cop(s.income))),
+          h('div', { class: 'flow' }, h('span', {}, '↑ Salió'), h('span', { class: 'v num' }, cop(s.expense)),
+            s.expense ? h('span', { class: 'gmf' }, `4×1000 aprox. ${cop(gmf)}`) : null)));
     }
 
     /* ---------- Vistas ---------- */
@@ -151,13 +169,7 @@ const FinanzasUI = (() => {
       const alerts = budgets.filter((b) => b.spent / b.limit_amount >= 0.8);
       const gmf = Math.round(s.expense * 0.004);
       return [
-        h('section', { class: 'figures', 'aria-label': 'Cifras del mes' },
-          h('div', { class: 'figure hero' }, h('span', { class: 'label' }, 'Balance del mes'),
-            h('span', { class: 'value num', style: `color:var(${s.balance < 0 ? '--expense' : '--fg'})` }, cop(s.balance)),
-            s.income ? h('span', { class: 'note' }, `Ahorras el ${Math.max(0, Math.round((s.balance / s.income) * 100))}% de lo que entra`) : h('span', { class: 'note' }, 'Registra tu primer ingreso para ver cuánto ahorras.')),
-          h('div', { class: 'figure income' }, h('span', { class: 'label' }, 'Ingresos'), h('span', { class: 'value num' }, cop(s.income))),
-          h('div', { class: 'figure expense' }, h('span', { class: 'label' }, 'Gastos'), h('span', { class: 'value num' }, cop(s.expense)),
-            s.expense ? h('span', { class: 'note' }, `4×1000 estimado si pagas desde el banco: ${cop(gmf)}`) : null)),
+        balanceCard(s, gmf),
         h('section', { class: 'panel', 'aria-label': 'Registrar movimiento' }, h('h2', {}, 'Registrar movimiento'), txForm()),
         alerts.length ? h('section', { class: 'panel' }, h('h2', {}, 'Ojo con estos presupuestos'),
           h('div', { class: 'badge-row' }, alerts.map((b) => h('span', { class: `chip ${b.spent > b.limit_amount ? 'over' : 'warn'}` },
@@ -178,8 +190,9 @@ const FinanzasUI = (() => {
         h('section', { class: 'panel' },
           h('div', { class: 'panel-head' }, h('h2', {}, `Movimientos de ${monthName(state.month)}`), h('span', { class: 'muted' }, `${txs.length} en total`)),
           txs.length ? h('div', { class: 'list' }, txs.map((t) => h('div', { class: 'row' },
-            h('span', { class: 'date num' }, t.date.slice(8) + '/' + t.date.slice(5, 7)),
-            h('div', { class: 'what' }, h('div', {}, t.category), t.description ? h('div', { class: 'muted', style: 'font-size:.85rem' }, t.description) : null),
+            h('span', { class: 'avatar', style: `background:${catColor(t.category)}`, 'aria-hidden': 'true' }, t.category.charAt(0)),
+            h('div', { class: 'what' }, h('div', { style: 'font-weight:700' }, t.description || t.category),
+              h('div', { class: 'sub' }, `${t.description ? t.category + ', ' : ''}${Number(t.date.slice(8))} de ${monthName(t.date.slice(0, 7)).split(' ')[0].toLowerCase()}`)),
             h('span', { class: `amount num ${t.type}` }, (t.type === 'gasto' ? '− ' : '+ ') + cop(t.amount)),
             deleteButton('Borrar movimiento', () => act(() => store.deleteTx(t.id), 'Movimiento borrado')))))
             : h('div', { class: 'empty' }, 'Sin movimientos este mes. Registra el primero arriba.')),
