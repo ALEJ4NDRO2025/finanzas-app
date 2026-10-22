@@ -8,7 +8,7 @@ const out = process.argv[2] || path.join(__dirname, 'mis-finanzas.html');
 fs.writeFileSync(out, `<title>Mis Finanzas</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Manrope:wght@400;500;600&display=swap">
 <style>
 ${read('public/styles.css')}
 </style>

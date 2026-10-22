@@ -129,8 +129,8 @@ const FinanzasUI = (() => {
       const band = (W - L) / trend.length, bw = Math.min(22, band / 3.2);
       trend.forEach((t, i) => {
         const cx = L + band * i + band / 2;
-        el.append(svg('rect', { x: cx - bw - 2, y: y(t.income), width: bw, height: Math.max(0, y(0) - y(t.income)), rx: 3, class: 'bar-in' }));
-        el.append(svg('rect', { x: cx + 2, y: y(t.expense), width: bw, height: Math.max(0, y(0) - y(t.expense)), rx: 3, class: 'bar-out' }));
+        el.append(svg('rect', { x: cx - bw - 2, y: y(t.income), width: bw, height: Math.max(0, y(0) - y(t.income)), rx: 1, class: 'bar-in' }));
+        el.append(svg('rect', { x: cx + 2, y: y(t.expense), width: bw, height: Math.max(0, y(0) - y(t.expense)), rx: 1, class: 'bar-out' }));
         const lab = svg('text', { x: cx, y: H - 8, 'text-anchor': 'middle' }); lab.textContent = monthName(t.month, true).replace('.', ''); el.append(lab);
       });
       return h('div', { style: 'overflow-x:auto' }, el);
@@ -151,14 +151,14 @@ const FinanzasUI = (() => {
       const alerts = budgets.filter((b) => b.spent / b.limit_amount >= 0.8);
       const gmf = Math.round(s.expense * 0.004);
       return [
-        h('section', { class: 'panel', 'aria-label': 'Registrar movimiento' }, h('h2', {}, 'Registrar movimiento'), txForm()),
         h('section', { class: 'figures', 'aria-label': 'Cifras del mes' },
+          h('div', { class: 'figure hero' }, h('span', { class: 'label' }, 'Balance del mes'),
+            h('span', { class: 'value num', style: `color:var(${s.balance < 0 ? '--expense' : '--fg'})` }, cop(s.balance)),
+            s.income ? h('span', { class: 'note' }, `Ahorras el ${Math.max(0, Math.round((s.balance / s.income) * 100))}% de lo que entra`) : h('span', { class: 'note' }, 'Registra tu primer ingreso para ver cuánto ahorras.')),
           h('div', { class: 'figure income' }, h('span', { class: 'label' }, 'Ingresos'), h('span', { class: 'value num' }, cop(s.income))),
           h('div', { class: 'figure expense' }, h('span', { class: 'label' }, 'Gastos'), h('span', { class: 'value num' }, cop(s.expense)),
-            s.expense ? h('span', { class: 'muted', style: 'font-size:.78rem' }, `4×1000 estimado si pagas desde el banco: ${cop(gmf)}`) : null),
-          h('div', { class: 'figure' }, h('span', { class: 'label' }, 'Balance'),
-            h('span', { class: 'value num', style: `color:var(${s.balance < 0 ? '--expense' : '--fg'})` }, cop(s.balance)),
-            s.income ? h('span', { class: 'muted', style: 'font-size:.78rem' }, `Ahorras el ${Math.max(0, Math.round((s.balance / s.income) * 100))}% de lo que entra`) : null)),
+            s.expense ? h('span', { class: 'note' }, `4×1000 estimado si pagas desde el banco: ${cop(gmf)}`) : null)),
+        h('section', { class: 'panel', 'aria-label': 'Registrar movimiento' }, h('h2', {}, 'Registrar movimiento'), txForm()),
         alerts.length ? h('section', { class: 'panel' }, h('h2', {}, 'Ojo con estos presupuestos'),
           h('div', { class: 'badge-row' }, alerts.map((b) => h('span', { class: `chip ${b.spent > b.limit_amount ? 'over' : 'warn'}` },
             `${b.category}: ${Math.round((b.spent / b.limit_amount) * 100)}%`)))) : null,
