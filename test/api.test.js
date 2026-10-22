@@ -153,6 +153,46 @@ describe('Seguridad', () => {
   });
 });
 
+describe('Recuperación de contraseña', () => {
+  test('flujo completo: código al registrarse, recuperar, código quemado', async () => {
+    const a = await client();
+    const reg = await a.send('post', '/api/auth/register', { name: 'Olvido', email: 'olvido@x.co', password: PASS });
+    const code = reg.body.recoveryCode;
+    assert.match(code, /^[2-9A-HJKMNP-Z]{5}(-[2-9A-HJKMNP-Z]{5}){3}$/);
+
+    const b = await client();
+    const rec = await b.send('post', '/api/auth/recover', { email: 'olvido@x.co', code: code.toLowerCase().replace(/-/g, ' '), password: 'NuevaClave456' });
+    assert.equal(rec.status, 200);
+    assert.ok(rec.body.recoveryCode && rec.body.recoveryCode !== code, 'entrega un código nuevo');
+
+    // La sesión vieja quedó cerrada, la contraseña vieja ya no sirve y el código usado está quemado.
+    assert.equal((await a.agent.get('/api/auth/me')).status, 401);
+    assert.equal((await (await client()).send('post', '/api/auth/login', { email: 'olvido@x.co', password: PASS })).status, 401);
+    assert.equal((await (await client()).send('post', '/api/auth/login', { email: 'olvido@x.co', password: 'NuevaClave456' })).status, 200);
+    assert.equal((await (await client()).send('post', '/api/auth/recover', { email: 'olvido@x.co', code, password: 'OtraClave789' })).status, 401);
+  });
+
+  test('códigos falsos: mismo error exista o no el correo, y freno tras 5', async () => {
+    const { send } = await client();
+    await send('post', '/api/auth/register', { name: 'Brute', email: 'brute@x.co', password: PASS });
+    const c = await client();
+    const fake = { code: 'AAAAA-BBBBB-CCCCC-DDDDD', password: 'NuevaClave456' };
+    assert.equal((await c.send('post', '/api/auth/recover', { email: 'noexiste@x.co', ...fake })).status, 401);
+    for (let i = 0; i < 5; i++) await c.send('post', '/api/auth/recover', { email: 'brute@x.co', ...fake });
+    assert.equal((await c.send('post', '/api/auth/recover', { email: 'brute@x.co', ...fake })).status, 429);
+  });
+
+  test('cuentas antiguas reciben su código al iniciar sesión, solo una vez', async () => {
+    const { send } = await client();
+    await send('post', '/api/auth/register', { name: 'Vieja', email: 'vieja@x.co', password: PASS });
+    require('../src/db').prepare("UPDATE users SET recovery_hash = NULL WHERE email = 'vieja@x.co'").run();
+    const l1 = await (await client()).send('post', '/api/auth/login', { email: 'vieja@x.co', password: PASS });
+    assert.ok(l1.body.recoveryCode);
+    const l2 = await (await client()).send('post', '/api/auth/login', { email: 'vieja@x.co', password: PASS });
+    assert.equal(l2.body.recoveryCode, undefined);
+  });
+});
+
 describe('Finanzas', () => {
   let c;
   before(async () => {

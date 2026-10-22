@@ -18,7 +18,8 @@ const Api = (() => {
     // Token de acceso vencido (15 min): se renueva una vez con el refresh token y se repite.
     if (res.status === 401 && retry && !/^\/api\/auth\/(refresh|login|register|logout)/.test(url)) {
       if (await refresh().catch(() => false)) return call(method, url, body, false);
-      location.reload();
+      // Sin sesión renovable: al arrancar se muestra el acceso; a mitad de uso, se recarga hacia el acceso.
+      if (url !== '/api/auth/me') location.reload();
     }
     if (res.status === 204) return null;
     const data = await res.json().catch(() => ({}));
@@ -59,33 +60,68 @@ const Api = (() => {
 
   try { return start((await Api.call('GET', '/api/auth/me')).user); } catch { /* sin sesión */ }
 
+  // Pantalla que muestra el código de recuperación una sola vez, antes de entrar a la app.
+  function showRecoveryCode(user, code, recovered) {
+    const [g1, g2, g3, g4] = code.split('-');
+    const box = h('div', { class: 'recovery-code num', id: 'recovery-code', tabindex: '0', 'aria-label': code }, `${g1}-${g2}-`, h('wbr'), `${g3}-${g4}`);
+    const copyBtn = h('button', {
+      type: 'button', onclick: async () => {
+        try { await navigator.clipboard.writeText(code); copyBtn.textContent = 'Copiado'; }
+        catch { const r = document.createRange(); r.selectNodeContents(box); getSelection().removeAllRanges(); getSelection().addRange(r); copyBtn.textContent = 'Selecciónalo y cópialo'; }
+      },
+    }, 'Copiar código');
+    const check = h('input', { type: 'checkbox', id: 'saved-check' });
+    const go = h('button', { class: 'btn-primary', disabled: true, onclick: () => start(user) }, 'Entrar a mi cuenta');
+    check.addEventListener('change', () => { go.disabled = !check.checked; });
+    root.replaceChildren(h('div', { class: 'wrap' }, h('main', { class: 'auth panel' },
+      h('h1', {}, recovered ? 'Contraseña cambiada' : 'Guarda tu código'),
+      h('p', { class: 'muted', style: 'margin:0' }, recovered
+        ? 'Cerramos tus otras sesiones. Tu código anterior ya no sirve; este es el nuevo.'
+        : 'Si olvidas tu contraseña, con este código la recuperas. Solo lo verás esta vez.'),
+      box,
+      copyBtn,
+      h('p', { class: 'hint' }, 'Guárdalo en tu gestor de contraseñas o en una nota segura. Sin él no hay forma de recuperar la cuenta.'),
+      h('label', { class: 'check-row', for: 'saved-check' }, check, 'Ya lo guardé'),
+      go)));
+    box.focus();
+  }
+
+  const afterAuth = ({ user, recoveryCode }, recovered) => (recoveryCode ? showRecoveryCode(user, recoveryCode, recovered) : start(user));
+
   function authScreen(mode) {
     const isReg = mode === 'register';
+    const isRec = mode === 'recover';
     const err = h('p', { class: 'error', role: 'alert', hidden: true });
     const name = isReg ? h('input', { id: 'name', autocomplete: 'name', required: true, minlength: '2', maxlength: '60' }) : null;
     const email = h('input', { id: 'email', type: 'email', autocomplete: 'email', required: true });
-    const pass = h('input', { id: 'password', type: 'password', autocomplete: isReg ? 'new-password' : 'current-password', required: true, minlength: isReg ? '10' : '1' });
-    const submit = h('button', { class: 'btn-primary', type: 'submit' }, isReg ? 'Crear cuenta' : 'Entrar');
+    const code = isRec ? h('input', { id: 'code', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', required: true, placeholder: 'XXXXX-XXXXX-XXXXX-XXXXX', maxlength: '40' }) : null;
+    const pass = h('input', { id: 'password', type: 'password', autocomplete: isReg || isRec ? 'new-password' : 'current-password', required: true, minlength: isReg || isRec ? '10' : '1' });
+    const submit = h('button', { class: 'btn-primary', type: 'submit' }, isReg ? 'Crear cuenta' : isRec ? 'Cambiar contraseña' : 'Entrar');
     const form = h('form', {
       onsubmit: async (e) => {
         e.preventDefault(); err.hidden = true; submit.disabled = true;
         try {
-          const body = { email: email.value, password: pass.value, ...(isReg && { name: name.value }) };
-          const { user } = await Api.call('POST', isReg ? '/api/auth/register' : '/api/auth/login', body);
-          start(user);
+          const body = { email: email.value, password: pass.value, ...(isReg && { name: name.value }), ...(isRec && { code: code.value }) };
+          const url = isReg ? '/api/auth/register' : isRec ? '/api/auth/recover' : '/api/auth/login';
+          afterAuth(await Api.call('POST', url, body), isRec);
         } catch (ex) { err.textContent = ex.message; err.hidden = false; submit.disabled = false; }
       },
     },
       isReg ? h('div', { class: 'field' }, h('label', { for: 'name' }, 'Tu nombre'), name) : null,
       h('div', { class: 'field' }, h('label', { for: 'email' }, 'Correo'), email),
-      h('div', { class: 'field' }, h('label', { for: 'password' }, 'Contraseña'), pass),
-      isReg ? h('p', { class: 'hint' }, 'Mínimo 10 caracteres, con mayúscula, minúscula y número.') : null,
+      isRec ? h('div', { class: 'field' }, h('label', { for: 'code' }, 'Código de recuperación'), code) : null,
+      h('div', { class: 'field' }, h('label', { for: 'password' }, isRec ? 'Contraseña nueva' : 'Contraseña'), pass),
+      isReg || isRec ? h('p', { class: 'hint' }, 'Mínimo 10 caracteres, con mayúscula, minúscula y número.') : null,
       err, submit);
+    const intro = isReg ? 'Crea tu cuenta para llevar ingresos, gastos, presupuestos y metas.'
+      : isRec ? 'Usa el código que guardaste al crear tu cuenta.' : 'Entra para ver cómo vas este mes.';
     root.replaceChildren(h('div', { class: 'wrap' }, h('main', { class: 'auth panel' },
-      h('h1', {}, 'Mis Finanzas'),
-      h('p', { class: 'muted', style: 'margin:0' }, isReg ? 'Crea tu cuenta para llevar ingresos, gastos, presupuestos y metas.' : 'Entra para ver cómo vas este mes.'),
+      h('h1', {}, isRec ? 'Recuperar acceso' : 'Mis Finanzas'),
+      h('p', { class: 'muted', style: 'margin:0' }, intro),
       form,
-      h('button', { class: 'btn-ghost', onclick: () => authScreen(isReg ? 'login' : 'register') }, isReg ? 'Ya tengo cuenta' : 'Crear una cuenta nueva'))));
+      h('div', { class: 'auth-links' },
+        mode === 'login' ? h('button', { class: 'btn-ghost', onclick: () => authScreen('recover') }, 'Olvidé mi contraseña') : null,
+        h('button', { class: 'btn-ghost', onclick: () => authScreen(isReg || isRec ? 'login' : 'register') }, isReg || isRec ? 'Volver a entrar' : 'Crear una cuenta nueva')))));
     (isReg ? name : email).focus();
   }
   authScreen('login');

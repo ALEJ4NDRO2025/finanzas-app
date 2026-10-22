@@ -167,3 +167,9 @@ input#tx-amount, input#bud-amount, input#goal-target { font-size: 1.15rem; font-
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 @media (min-width: 700px) { form.quick .field:has(.seg) { grid-column: span 2; } }
+
+/* Código de recuperación */
+.recovery-code { background: var(--surface-2); border-radius: var(--r-ctl); padding: 18px 16px; font-size: clamp(1rem, 4.6vw, 1.3rem); font-weight: 900; letter-spacing: 0.04em; text-align: center; overflow-wrap: anywhere; word-spacing: -0.1em; user-select: all; }
+.check-row { display: flex; align-items: center; gap: 10px; font-weight: 700; cursor: pointer; min-height: 44px; }
+.check-row input { width: 22px; height: 22px; min-height: 0; accent-color: var(--income); }
+.auth-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }

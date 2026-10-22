@@ -73,6 +73,8 @@ function CREATE_EXTRA() {
   // Migración: momento en que se rotó cada refresh token (para tolerar dos pestañas renovando a la vez).
   const cols = db.prepare('PRAGMA table_info(refresh_tokens)').all().map((c) => c.name);
   if (!cols.includes('rotated_at')) db.exec('ALTER TABLE refresh_tokens ADD COLUMN rotated_at INTEGER');
+  const ucols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (!ucols.includes('recovery_hash')) db.exec('ALTER TABLE users ADD COLUMN recovery_hash TEXT');
 }
 
 // Limpieza: tokens vencidos e intentos viejos no se acumulan para siempre.

@@ -56,6 +56,44 @@ const password = z.string()
 // El frontend pide aquí su token CSRF al cargar.
 router.get('/csrf', (req, res) => res.json({ csrfToken: issueCsrf(res) }));
 
+// ---------- Freno de intentos (login y recuperación) ----------
+// Por correo+IP: un atacante desde otra red no puede bloquearle la cuenta a su dueño.
+// Se cuenta igual exista o no el correo, así la respuesta no revela qué correos están registrados.
+function throttle(kind, mail, req) {
+  const keys = [`${kind}:${mail}|${req.ip}`, `${kind}e:${mail}`];
+  const t = now();
+  const rows = keys.map((k) => db.prepare('SELECT * FROM login_attempts WHERE key = ?').get(k));
+  if (rows.some((r) => r?.locked_until > t)) {
+    audit(null, `${kind}_throttled`, req);
+    throw new ApiError(429, `Demasiados intentos. Espera ${config.lockMinutes} minutos e intenta de nuevo.`);
+  }
+  return {
+    fail() {
+      const limits = [config.maxFailedLogins, config.maxFailedPerEmail];
+      keys.forEach((k, i) => {
+        const r = rows[i];
+        const fresh = !r || r.window_start < t - 3600;
+        const fails = (fresh ? 0 : r.fails) + 1;
+        const lock = fails >= limits[i] ? t + config.lockMinutes * 60 : null;
+        db.prepare(`INSERT INTO login_attempts (key, fails, window_start, locked_until) VALUES (?, ?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET fails = excluded.fails, window_start = excluded.window_start, locked_until = excluded.locked_until`)
+          .run(k, lock ? 0 : fails, fresh ? t : r.window_start, lock);
+      });
+    },
+    clear() { db.prepare('DELETE FROM login_attempts WHERE key = ?').run(keys[0]); },
+  };
+}
+
+// ---------- Código de recuperación ----------
+// 20 caracteres de un alfabeto sin confusiones (sin 0/O, 1/I/L): ~100 bits de azar. Solo se guarda su hash.
+const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const normCode = (c) => c.toUpperCase().replace(/[^A-Z0-9]/g, '');
+function newRecoveryCode(userId) {
+  const raw = Array.from(crypto.randomBytes(20), (b) => ALPHABET[b % ALPHABET.length]).join('');
+  db.prepare('UPDATE users SET recovery_hash = ? WHERE id = ?').run(bcrypt.hashSync(raw, config.bcryptRounds), userId);
+  return raw.match(/.{5}/g).join('-');
+}
+
 router.post('/register', registerLimiter, validate({
   body: z.object({ name: z.string().trim().min(2).max(60), email, password }).strict(),
 }), async (req, res) => {
@@ -63,47 +101,55 @@ router.post('/register', registerLimiter, validate({
   const exists = db.prepare('SELECT 1 FROM users WHERE email = ?').get(mail);
   if (exists) throw new ApiError(409, 'No se pudo crear la cuenta con ese correo');
   const hash = await bcrypt.hash(pass, config.bcryptRounds);
-  const { lastInsertRowid } = db.prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)').run(mail, name, hash);
-  audit(Number(lastInsertRowid), 'register', req);
-  startSession(res, Number(lastInsertRowid));
-  res.status(201).json({ user: { id: Number(lastInsertRowid), name, email: mail } });
+  const id = Number(db.prepare('INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?)').run(mail, name, hash).lastInsertRowid);
+  const recoveryCode = newRecoveryCode(id);
+  audit(id, 'register', req);
+  startSession(res, id);
+  res.status(201).json({ user: { id, name, email: mail }, recoveryCode });
 });
 
 router.post('/login', authLimiter, validate({
   body: z.object({ email, password: z.string().min(1).refine(max72, 'Correo o contraseña incorrectos') }).strict(),
 }), async (req, res) => {
   const { email: mail, password: pass } = req.valid.body;
-  // Bloqueo por correo+IP: un atacante desde otra red no puede bloquearle la cuenta a su dueño.
-  // Se cuenta igual exista o no el correo, así la respuesta no revela qué correos están registrados.
-  const keys = [`p:${mail}|${req.ip}`, `e:${mail}`];
-  const t = now();
-  const rows = keys.map((k) => db.prepare('SELECT * FROM login_attempts WHERE key = ?').get(k));
-  if (rows.some((r) => r?.locked_until > t)) {
-    audit(null, 'login_throttled', req);
-    throw new ApiError(429, `Demasiados intentos. Espera ${config.lockMinutes} minutos e intenta de nuevo.`);
-  }
-
+  const guard = throttle('p', mail, req);
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(mail);
   const ok = await bcrypt.compare(pass, user?.password_hash ?? DUMMY_HASH);
   if (!user || !ok) {
-    const limits = [config.maxFailedLogins, config.maxFailedPerEmail];
-    keys.forEach((k, i) => {
-      const r = rows[i];
-      const fresh = !r || r.window_start < t - 3600;
-      const fails = (fresh ? 0 : r.fails) + 1;
-      const lock = fails >= limits[i] ? t + config.lockMinutes * 60 : null;
-      db.prepare(`INSERT INTO login_attempts (key, fails, window_start, locked_until) VALUES (?, ?, ?, ?)
-        ON CONFLICT(key) DO UPDATE SET fails = excluded.fails, window_start = excluded.window_start, locked_until = excluded.locked_until`)
-        .run(k, lock ? 0 : fails, fresh ? t : r.window_start, lock);
-    });
+    guard.fail();
     if (user) audit(user.id, 'login_failed', req);
     throw new ApiError(401, 'Correo o contraseña incorrectos'); // mismo mensaje exista o no el correo
   }
-
-  db.prepare('DELETE FROM login_attempts WHERE key = ?').run(keys[0]);
+  guard.clear();
   audit(user.id, 'login', req);
   startSession(res, user.id);
-  res.json({ user: { id: user.id, name: user.name, email: user.email } });
+  // Cuentas creadas antes de existir los códigos reciben el suyo en su siguiente inicio de sesión.
+  const recoveryCode = user.recovery_hash ? undefined : newRecoveryCode(user.id);
+  res.json({ user: { id: user.id, name: user.name, email: user.email }, recoveryCode });
+});
+
+// Olvidé mi contraseña: correo + código de recuperación + contraseña nueva.
+router.post('/recover', authLimiter, validate({
+  body: z.object({ email, code: z.string().min(1).max(40), password }).strict(),
+}), async (req, res) => {
+  const { email: mail, code, password: pass } = req.valid.body;
+  const guard = throttle('r', mail, req);
+  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(mail);
+  const ok = await bcrypt.compare(normCode(code), user?.recovery_hash ?? DUMMY_HASH);
+  if (!user || !user.recovery_hash || !ok) {
+    guard.fail();
+    if (user) audit(user.id, 'recover_failed', req);
+    throw new ApiError(401, 'Correo o código incorrectos');
+  }
+  guard.clear();
+  db.prepare('DELETE FROM login_attempts WHERE key LIKE ?').run(`p%:${mail}%`); // desbloquea el login
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(await bcrypt.hash(pass, config.bcryptRounds), user.id);
+  // Quien tuviera la contraseña vieja pierde el acceso: se cierran todas las sesiones.
+  db.prepare('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?').run(user.id);
+  const recoveryCode = newRecoveryCode(user.id); // el código usado queda quemado
+  audit(user.id, 'password_recovered', req);
+  startSession(res, user.id);
+  res.json({ user: { id: user.id, name: user.name, email: user.email }, recoveryCode });
 });
 
 // Rotación de refresh tokens con detección de reutilización (robo de token).
