@@ -1,0 +1,22 @@
+# Despliegue en Render con un clic: New → Blueprint → elige este repo.
+services:
+  - type: web
+    name: finanzas-app
+    runtime: node
+    plan: starter # el disco persistente requiere plan pago; en "free" los datos se borran al redesplegar
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: JWT_SECRET
+        generateValue: true # Render genera un secreto aleatorio
+      - key: DB_PATH
+        value: /var/data/finanzas.db
+    disk:
+      name: datos
+      mountPath: /var/data
+      sizeGB: 1
