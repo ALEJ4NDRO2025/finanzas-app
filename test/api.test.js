@@ -241,6 +241,29 @@ describe('Finanzas', () => {
     assert.equal(s.trend.length, 6);
   });
 
+  test('un gasto con una meta como categoría se suma a la meta y se resta al borrarlo', async () => {
+    const g = (await c.send('post', '/api/goals', { name: 'Moto', target: 6000000 })).body.goal;
+    await c.send('post', `/api/goals/${g.id}/contributions`, { amount: 100000 });
+    const tx = await c.send('post', '/api/transactions', { type: 'gasto', amount: 400000, category: 'x', goal_id: g.id, date: '2026-10-07' });
+    assert.equal(tx.status, 201);
+    assert.equal(tx.body.transaction.category, 'Moto');
+    assert.equal(tx.body.goal.saved, 500000);
+    const goals = (await c.agent.get('/api/goals')).body.goals;
+    assert.equal(goals.find((x) => x.id === g.id).saved, 500000);
+    // no se puede retirar el dinero que entró por movimientos, y un ingreso no puede ir a una meta
+    assert.equal((await c.send('post', `/api/goals/${g.id}/contributions`, { amount: -300000 })).status, 400);
+    assert.equal((await c.send('post', '/api/transactions', { type: 'ingreso', amount: 1, category: 'x', goal_id: g.id, date: '2026-10-07' })).status, 400);
+    await c.send('delete', `/api/transactions/${tx.body.transaction.id}`);
+    assert.equal((await c.agent.get('/api/goals')).body.goals.find((x) => x.id === g.id).saved, 100000);
+  });
+
+  test('no se puede mandar dinero a la meta de otra persona', async () => {
+    const o = await client();
+    await o.send('post', '/api/auth/register', { name: 'Otra', email: 'otra@x.co', password: PASS });
+    const og = (await o.send('post', '/api/goals', { name: 'Ajena', target: 1000 })).body.goal;
+    assert.equal((await c.send('post', '/api/transactions', { type: 'gasto', amount: 1, category: 'x', goal_id: og.id, date: '2026-10-07' })).status, 404);
+  });
+
   test('montos decimales o negativos rechazados', async () => {
     assert.equal((await c.send('post', '/api/transactions', { type: 'gasto', amount: 10.5, category: 'X', date: '2026-10-01' })).status, 400);
     assert.equal((await c.send('post', '/api/transactions', { type: 'gasto', amount: -10, category: 'X', date: '2026-10-01' })).status, 400);

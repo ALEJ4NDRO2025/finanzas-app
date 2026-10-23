@@ -75,6 +75,9 @@ function CREATE_EXTRA() {
   if (!cols.includes('rotated_at')) db.exec('ALTER TABLE refresh_tokens ADD COLUMN rotated_at INTEGER');
   const ucols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   if (!ucols.includes('recovery_hash')) db.exec('ALTER TABLE users ADD COLUMN recovery_hash TEXT');
+  // Movimientos que alimentan una meta de ahorro. Si la meta se borra, el movimiento queda sin meta.
+  const tcols = db.prepare('PRAGMA table_info(transactions)').all().map((c) => c.name);
+  if (!tcols.includes('goal_id')) db.exec('ALTER TABLE transactions ADD COLUMN goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL');
 }
 
 // Limpieza: tokens vencidos e intentos viejos no se acumulan para siempre.

@@ -60,8 +60,41 @@ const FinanzasUI = (() => {
     return wrap;
   }
 
+  // Cuánto falta, en meses, para la fecha límite de una meta (mínimo 1).
+  function monthsLeft(deadline) {
+    const [y, m] = deadline.split('-').map(Number); const n = new Date();
+    return Math.max(1, (y - n.getFullYear()) * 12 + (m - 1 - n.getMonth()));
+  }
+
+  // Reporte que aparece al mandar dinero a una meta: cuánto llevas y cuánto te falta.
+  function goalReport(g, added) {
+    const left = Math.max(0, g.target - g.saved);
+    const pct = Math.min(100, Math.round((g.saved / g.target) * 100));
+    const done = left === 0;
+    const close = h('button', { class: 'btn-primary', type: 'button' }, 'Listo');
+    const sheet = h('div', { class: 'report-backdrop', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'report-title' },
+      h('div', { class: 'report' },
+        h('span', { class: 'report-kicker' }, `+ ${cop(added)} a tu meta`),
+        h('h2', { id: 'report-title', class: 'report-title' }, g.name),
+        h('div', { class: 'report-ring', style: `--p:${pct}` }, h('span', { class: 'num' }, `${pct}%`)),
+        h('dl', { class: 'report-grid' },
+          h('div', {}, h('dt', {}, 'Llevas'), h('dd', { class: 'num' }, cop(g.saved))),
+          h('div', {}, h('dt', {}, 'Meta'), h('dd', { class: 'num' }, cop(g.target))),
+          h('div', { class: done ? 'done' : 'left' }, h('dt', {}, done ? 'Estado' : 'Te faltan'), h('dd', { class: 'num' }, done ? '¡Cumplida!' : cop(left)))),
+        !done && g.deadline ? h('p', { class: 'report-note' }, `Ahorra ${cop(left / monthsLeft(g.deadline))} al mes para llegar a tiempo.`) : null,
+        done ? h('p', { class: 'report-note' }, 'Llegaste a la meta. Lo que sigas mandando queda como extra.') : null,
+        close));
+    const shut = () => { sheet.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') shut(); };
+    close.addEventListener('click', shut);
+    sheet.addEventListener('click', (e) => { if (e.target === sheet) shut(); });
+    document.addEventListener('keydown', onKey);
+    document.body.append(sheet);
+    close.focus();
+  }
+
   function mount(root, store, opts = {}) {
-    const state = { month: thisMonth(), tab: 'resumen', txType: 'gasto', customs: { gasto: new Set(), ingreso: new Set() } };
+    const state = { month: thisMonth(), tab: 'resumen', txType: 'gasto', customs: { gasto: new Set(), ingreso: new Set() }, goals: [] };
     const learnCustoms = (txs) => txs.forEach((t) => { if (!CATS[t.type].includes(t.category)) state.customs[t.type].add(t.category); });
     let busy = false;
 
@@ -104,7 +137,11 @@ const FinanzasUI = (() => {
     function txForm() {
       const err = h('p', { class: 'error', hidden: true });
       const amount = moneyInput('tx-amount', '0');
-      const cat = h('select', { id: 'tx-cat' }, CATS[state.txType].map((c) => h('option', {}, c)));
+      // En gastos, tus metas salen como "Ahorro: <meta>": el dinero se suma a esa meta.
+      const goalOpts = state.txType === 'gasto' && state.goals.length
+        ? h('optgroup', { label: 'Metas de ahorro' }, state.goals.map((g) => h('option', { value: `goal:${g.id}` }, `Ahorro: ${g.name}`)))
+        : null;
+      const cat = h('select', { id: 'tx-cat' }, CATS[state.txType].map((c) => h('option', {}, c)), goalOpts);
       const date = h('input', { id: 'tx-date', type: 'date', value: state.month === thisMonth() ? today() : `${state.month}-01`, required: true });
       const desc = h('input', { id: 'tx-desc', maxlength: '140', placeholder: 'Opcional' });
       // "Otros" pide escribir qué fue; lo que escribas queda como categoría propia y se sugiere la próxima vez.
@@ -127,6 +164,14 @@ const FinanzasUI = (() => {
           e.preventDefault();
           const value = digits(amount.value);
           if (!value) { err.textContent = 'Escribe un valor mayor a 0.'; err.hidden = false; return; }
+          if (cat.value.startsWith('goal:')) {
+            const goal = state.goals.find((g) => `goal:${g.id}` === cat.value);
+            act(async () => {
+              const r = await store.addTx({ type: 'gasto', amount: value, category: goal.name, goal_id: goal.id, description: desc.value.trim(), date: date.value });
+              if (r?.goal) goalReport(r.goal, value);
+            });
+            return;
+          }
           const category = cat.value === 'Otros' ? other.value.trim().replace(/\s+/g, ' ') : cat.value;
           if (!category) { err.textContent = isGasto ? 'Escribe en qué gastaste.' : 'Escribe de dónde vino.'; err.hidden = false; other.focus(); return; }
           const label = category.charAt(0).toUpperCase() + category.slice(1);
@@ -192,7 +237,8 @@ const FinanzasUI = (() => {
 
     /* ---------- Vistas ---------- */
     async function viewResumen() {
-      const [s, budgets] = await Promise.all([store.summary(state.month), store.listBudgets(state.month)]);
+      const [s, budgets, goals] = await Promise.all([store.summary(state.month), store.listBudgets(state.month), store.listGoals()]);
+      state.goals = goals;
       const alerts = budgets.filter((b) => b.spent / b.limit_amount >= 0.8);
       s.byCategory.forEach((c) => { if (!CATS.gasto.includes(c.category)) state.customs.gasto.add(c.category); });
       return [
@@ -228,7 +274,7 @@ const FinanzasUI = (() => {
       const detail = h('div', { class: 'tx-detail', id, hidden: true },
         h('dl', {},
           h('div', {}, h('dt', {}, 'Fecha'), h('dd', {}, fecha.charAt(0).toUpperCase() + fecha.slice(1))),
-          h('div', {}, h('dt', {}, 'Categoría'), h('dd', {}, t.category)),
+          h('div', {}, h('dt', {}, t.goal_id ? 'Meta' : 'Categoría'), h('dd', {}, t.goal_id ? `${t.category} (se suma a la meta)` : t.category)),
           t.description ? h('div', {}, h('dt', {}, 'Nota'), h('dd', {}, t.description)) : null),
         actions);
       const row = h('button', {
@@ -243,8 +289,9 @@ const FinanzasUI = (() => {
       },
         h('span', { class: 'avatar', style: `background:${catColor(t.category)}`, 'aria-hidden': 'true' }, t.category.charAt(0).toUpperCase()),
         h('span', { class: 'tx-main' },
-          h('span', { class: 'tx-title' }, t.description || t.category),
-          t.description ? h('span', { class: 'tx-sub' }, t.category) : null),
+          h('span', { class: 'tx-title' }, t.description || (t.goal_id ? `Ahorro: ${t.category}` : t.category)),
+          t.goal_id ? h('span', { class: 'tx-sub tx-goal' }, `Meta: ${t.category}`)
+            : t.description ? h('span', { class: 'tx-sub' }, t.category) : null),
         h('span', { class: `tx-amount num ${t.type}` }, (t.type === 'gasto' ? '− ' : '+ ') + cop(t.amount)));
       return h('li', { class: 'tx' }, row, detail);
     }
@@ -259,7 +306,8 @@ const FinanzasUI = (() => {
     }
 
     async function viewMovimientos() {
-      const txs = await store.listTx(state.month);
+      const [txs, goals] = await Promise.all([store.listTx(state.month), store.listGoals()]);
+      state.goals = goals;
       learnCustoms(txs);
       const days = [];
       for (const t of txs) {
@@ -344,6 +392,7 @@ const FinanzasUI = (() => {
 
     async function viewMetas() {
       const goals = await store.listGoals();
+      state.goals = goals;
       const GOALS = ['Fondo de emergencia', 'Viaje', 'Moto', 'Carro', 'Casa propia', 'Estudio', 'Celular o computador', 'Regalo', 'Otros'];
       const kind = h('select', { id: 'goal-kind' }, GOALS.map((g) => h('option', {}, g)));
       const name = h('input', { id: 'goal-name', maxlength: '60', autocomplete: 'off', placeholder: 'Ej: Gimnasio, boda, PlayStation' });
@@ -377,17 +426,16 @@ const FinanzasUI = (() => {
       const goalItem = (g) => {
         const pct = Math.min(1, g.saved / g.target);
         const amt = moneyInput(`goal-amt-${g.id}`, 'Valor');
-        let monthly = null;
-        if (g.deadline && g.saved < g.target) {
-          const [y, m] = g.deadline.split('-').map(Number); const n = new Date();
-          const months = Math.max(1, (y - n.getFullYear()) * 12 + (m - 1 - n.getMonth()));
-          monthly = `Ahorra ${cop((g.target - g.saved) / months)} al mes para llegar a tiempo`;
-        }
+        const left = Math.max(0, g.target - g.saved);
+        const monthly = g.deadline && left ? `Ahorra ${cop(left / monthsLeft(g.deadline))} al mes para llegar a tiempo` : null;
         const move = (sign) => { const v = digits(amt.value); if (!v) return toast('Escribe un valor'); act(() => store.contribute(g.id, sign * v), sign > 0 ? 'Aporte guardado' : 'Retiro guardado'); };
         return h('div', { class: 'item' },
           h('div', { class: 'item-head' }, h('h3', { style: 'font-size:1rem' }, g.name, pct >= 1 ? ' ' : null, pct >= 1 ? h('span', { class: 'chip' }, 'Cumplida') : null),
             h('span', {}, h('span', { class: 'num' }, `${cop(g.saved)} / ${cop(g.target)}`), deleteButton('Borrar meta', () => act(() => store.deleteGoal(g.id), 'Meta borrada')))),
           h('div', { class: 'meter' }, h('span', { style: `width:${pct * 100}%` })),
+          h('div', { class: 'goal-facts' },
+            left ? h('span', { class: 'goal-left' }, `Te faltan ${cop(left)}`, h('span', { class: 'muted' }, `  ${Math.round(Math.min(1, g.saved / g.target) * 100)}%`)) : null,
+            g.tx_count ? h('span', { class: 'muted' }, g.tx_count === 1 ? '1 gasto enlazado' : `${g.tx_count} gastos enlazados`) : null),
           monthly ? h('span', { class: 'muted', style: 'font-size:.82rem' }, monthly) : null,
           h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' }, h('div', { style: 'flex:1;min-width:120px' }, amt),
             h('button', { onclick: () => move(1) }, 'Aportar'), h('button', { class: 'btn-ghost', onclick: () => move(-1) }, 'Retirar')));

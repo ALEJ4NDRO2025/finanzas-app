@@ -55,7 +55,25 @@
     },
     async addTx(t) {
       check(['ingreso', 'gasto'].includes(t.type) && okMoney(t.amount) && okDay(t.date) && t.category, 'Revisa el valor y la fecha');
-      await col.doc('tx-' + crypto.randomUUID()).set({ kind: 'tx', ...t, description: String(t.description || '').slice(0, 140), createdAt: Date.now() }).catch(writeFail);
+      let category = t.category; let goalId = null;
+      if (t.goal_id) {
+        // Igual que el servidor: solo gastos, a una meta tuya, y la categoría es el nombre de la meta.
+        check(t.type === 'gasto', 'Solo los gastos se pueden mandar a una meta de ahorro');
+        const goal = ofKind('goal').find((g) => g._id === t.goal_id);
+        check(goal, 'Meta no encontrada');
+        category = goal.name; goalId = goal._id;
+      }
+      // Progreso calculado antes de guardar: el snapshot puede tardar en traer el gasto nuevo.
+      const before = goalId ? this.goalProgress(goalId) : null;
+      await col.doc('tx-' + crypto.randomUUID()).set({ kind: 'tx', type: t.type, amount: t.amount, category, date: t.date, goal_id: goalId, description: String(t.description || '').slice(0, 140), createdAt: Date.now() }).catch(writeFail);
+      return before ? { goal: { ...before, saved: before.saved + t.amount, from_tx: before.from_tx + t.amount, tx_count: before.tx_count + 1 } } : {};
+    },
+    // Lo ahorrado = aportes manuales + gastos enlazados (calculado, así borrar un movimiento ajusta la meta).
+    goalProgress(id) {
+      const g = ofKind('goal').find((x) => x._id === id);
+      const linked = ofKind('tx').filter((t) => t.goal_id === id && t.type === 'gasto');
+      const fromTx = linked.reduce((a, t) => a + t.amount, 0);
+      return { id, name: g.name, target: g.target, deadline: g.deadline, saved: g.saved + fromTx, from_tx: fromTx, tx_count: linked.length };
     },
     deleteTx: (id) => col.doc(id).delete().catch(writeFail),
     async listBudgets(m) {
@@ -70,7 +88,7 @@
     },
     deleteBudget: (id) => col.doc(id).delete().catch(writeFail),
     async listGoals() {
-      return ofKind('goal').sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).map((g) => ({ ...g, id: g._id }));
+      return ofKind('goal').sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)).map((g) => this.goalProgress(g._id));
     },
     async addGoal(g) {
       check(g.name && okMoney(g.target) && (!g.deadline || okDay(g.deadline)), 'Revisa el nombre y el valor');
@@ -79,9 +97,12 @@
     async contribute(id, amount) {
       const g = docs.find((d) => d._id === id);
       check(g, 'Meta no encontrada');
-      const saved = g.saved + amount;
-      check(saved >= 0, 'No puedes retirar más de lo ahorrado');
-      await col.doc(id).update({ saved }).catch(writeFail);
+      const manual = g.saved + amount;
+      if (manual < 0) {
+        const p = this.goalProgress(id);
+        check(false, p.from_tx > 0 && p.saved + amount >= 0 ? 'Ese dinero entró por movimientos: para sacarlo, borra el movimiento' : 'No puedes retirar más de lo ahorrado');
+      }
+      await col.doc(id).update({ saved: manual }).catch(writeFail);
     },
     deleteGoal: (id) => col.doc(id).delete().catch(writeFail),
   };

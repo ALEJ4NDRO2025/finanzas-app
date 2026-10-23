@@ -29,30 +29,48 @@ const txBody = z.object({
   category,
   description: z.string().trim().max(140).default(''),
   date: day,
+  goal_id: z.coerce.number().int().positive().optional(),
 }).strict();
+
+// Lo ahorrado en una meta = aportes manuales + gastos registrados con esa meta como categoría.
+// Se calcula siempre, así borrar o editar un movimiento ajusta la meta solo.
+const GOAL_SQL = `SELECT g.id, g.name, g.target, g.deadline, g.saved AS manual,
+    COALESCE(SUM(t.amount), 0) AS from_tx, COUNT(t.id) AS tx_count
+  FROM goals g LEFT JOIN transactions t ON t.goal_id = g.id AND t.user_id = g.user_id AND t.type = 'gasto'
+  WHERE g.user_id = ?`;
+const shapeGoal = (g) => g && ({ id: g.id, name: g.name, target: g.target, deadline: g.deadline, saved: g.manual + g.from_tx, from_tx: g.from_tx, tx_count: g.tx_count });
+const goalProgress = (id, userId) => shapeGoal(db.prepare(`${GOAL_SQL} AND g.id = ? GROUP BY g.id`).get(userId, id));
+
+// Si el movimiento va a una meta: debe ser un gasto, la meta debe ser tuya y la categoría es el nombre de la meta.
+function linkGoal(t, userId) {
+  if (!t.goal_id) return { ...t, goal_id: null };
+  if (t.type !== 'gasto') throw new ApiError(400, 'Solo los gastos se pueden mandar a una meta de ahorro');
+  const goal = ownOr404('goals', t.goal_id, userId);
+  return { ...t, category: goal.name };
+}
 
 router.get('/transactions', validate({
   query: z.object({ month: month.optional(), type: z.enum(['ingreso', 'gasto']).optional() }).strict(),
 }), (req, res) => {
   const { month: m = currentMonth(), type } = req.valid.query;
   const rows = type
-    ? db.prepare('SELECT id, type, amount, category, description, date FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? AND type = ? ORDER BY date DESC, id DESC').all(req.userId, m, type)
-    : db.prepare('SELECT id, type, amount, category, description, date FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? ORDER BY date DESC, id DESC').all(req.userId, m);
+    ? db.prepare('SELECT id, type, amount, category, description, date, goal_id FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? AND type = ? ORDER BY date DESC, id DESC').all(req.userId, m, type)
+    : db.prepare('SELECT id, type, amount, category, description, date, goal_id FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? ORDER BY date DESC, id DESC').all(req.userId, m);
   res.json({ transactions: rows });
 });
 
 router.post('/transactions', validate({ body: txBody }), (req, res) => {
-  const t = req.valid.body;
-  const { lastInsertRowid } = db.prepare('INSERT INTO transactions (user_id, type, amount, category, description, date) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(req.userId, t.type, t.amount, t.category, t.description, t.date);
-  res.status(201).json({ transaction: { id: Number(lastInsertRowid), ...t } });
+  const t = linkGoal(req.valid.body, req.userId);
+  const { lastInsertRowid } = db.prepare('INSERT INTO transactions (user_id, type, amount, category, description, date, goal_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(req.userId, t.type, t.amount, t.category, t.description, t.date, t.goal_id);
+  res.status(201).json({ transaction: { id: Number(lastInsertRowid), ...t }, goal: t.goal_id ? goalProgress(t.goal_id, req.userId) : undefined });
 });
 
 router.put('/transactions/:id', validate({ ...idParam, body: txBody }), (req, res) => {
   ownOr404('transactions', req.valid.params.id, req.userId);
-  const t = req.valid.body;
-  db.prepare('UPDATE transactions SET type = ?, amount = ?, category = ?, description = ?, date = ? WHERE id = ? AND user_id = ?')
-    .run(t.type, t.amount, t.category, t.description, t.date, req.valid.params.id, req.userId);
+  const t = linkGoal(req.valid.body, req.userId);
+  db.prepare('UPDATE transactions SET type = ?, amount = ?, category = ?, description = ?, date = ?, goal_id = ? WHERE id = ? AND user_id = ?')
+    .run(t.type, t.amount, t.category, t.description, t.date, t.goal_id, req.valid.params.id, req.userId);
   res.json({ transaction: { id: req.valid.params.id, ...t } });
 });
 
@@ -92,7 +110,7 @@ router.delete('/budgets/:id', validate(idParam), (req, res) => {
 
 /* ---------- Metas de ahorro ---------- */
 router.get('/goals', (req, res) => {
-  res.json({ goals: db.prepare('SELECT id, name, target, saved, deadline FROM goals WHERE user_id = ? ORDER BY id').all(req.userId) });
+  res.json({ goals: db.prepare(`${GOAL_SQL} GROUP BY g.id ORDER BY g.id`).all(req.userId).map(shapeGoal) });
 });
 
 router.post('/goals', validate({
@@ -101,7 +119,7 @@ router.post('/goals', validate({
   const g = req.valid.body;
   const { lastInsertRowid } = db.prepare('INSERT INTO goals (user_id, name, target, deadline) VALUES (?, ?, ?, ?)')
     .run(req.userId, g.name, g.target, g.deadline ?? null);
-  res.status(201).json({ goal: { id: Number(lastInsertRowid), saved: 0, ...g } });
+  res.status(201).json({ goal: goalProgress(Number(lastInsertRowid), req.userId) });
 });
 
 // Aportar (positivo) o retirar (negativo) de una meta.
@@ -110,10 +128,15 @@ router.post('/goals/:id/contributions', validate({
   body: z.object({ amount: z.coerce.number().int().refine((n) => n !== 0, 'No puede ser 0').refine((n) => Math.abs(n) <= 100_000_000_000) }).strict(),
 }), (req, res) => {
   const goal = ownOr404('goals', req.valid.params.id, req.userId);
-  const saved = goal.saved + req.valid.body.amount;
-  if (saved < 0) throw new ApiError(400, 'No puedes retirar más de lo ahorrado');
-  db.prepare('UPDATE goals SET saved = ? WHERE id = ? AND user_id = ?').run(saved, goal.id, req.userId);
-  res.json({ goal: { ...goal, saved, user_id: undefined } });
+  const manual = goal.saved + req.valid.body.amount;
+  if (manual < 0) {
+    const p = goalProgress(goal.id, req.userId);
+    throw new ApiError(400, p.from_tx > 0 && p.saved + req.valid.body.amount >= 0
+      ? 'Ese dinero entró por movimientos: para sacarlo, borra el movimiento'
+      : 'No puedes retirar más de lo ahorrado');
+  }
+  db.prepare('UPDATE goals SET saved = ? WHERE id = ? AND user_id = ?').run(manual, goal.id, req.userId);
+  res.json({ goal: goalProgress(goal.id, req.userId) });
 });
 
 router.delete('/goals/:id', validate(idParam), (req, res) => {
