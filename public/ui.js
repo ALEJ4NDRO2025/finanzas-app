@@ -81,10 +81,23 @@ const FinanzasUI = (() => {
           opts.onLogout ? h('button', { class: 'btn-ghost', onclick: opts.onLogout }, 'Salir') : null));
     }
 
+    // Íconos de las pestañas: solo se ven en celular, donde las pestañas pasan a una barra inferior.
+    const ICONS = {
+      resumen: ['M4 11.5 12 5l8 6.5', 'M6 10v9h12v-9', 'M10 19v-5h4v5'],
+      movimientos: ['M7 4v14', 'M3.5 14.5 7 18l3.5-3.5', 'M17 20V6', 'M13.5 9.5 17 6l3.5 3.5'],
+      presupuestos: ['M4 18a8 8 0 1 1 16 0', 'M12 18l4-5', 'M12 18h.01'],
+      metas: ['M6 21V4', 'M6 4h11l-2 4 2 4H6'],
+    };
+    const icon = (id) => {
+      const el = svg('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', class: 'tab-icon' });
+      ICONS[id].forEach((d) => el.append(svg('path', { d })));
+      return el;
+    };
+
     function tabs() {
       const t = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['presupuestos', 'Presupuestos'], ['metas', 'Metas']];
-      return h('nav', { class: 'tabs', role: 'tablist' }, t.map(([id, label]) =>
-        h('button', { role: 'tab', 'aria-selected': String(state.tab === id), onclick: () => { state.tab = id; render(); } }, label)));
+      return h('nav', { class: 'tabs', role: 'tablist', 'aria-label': 'Secciones' }, t.map(([id, label]) =>
+        h('button', { role: 'tab', 'aria-selected': String(state.tab === id), onclick: () => { state.tab = id; render(); window.scrollTo({ top: 0 }); } }, icon(id), h('span', {}, label))));
     }
 
     /* ---------- Registrar movimiento ---------- */
