@@ -256,7 +256,7 @@ input#tx-amount, input#bud-amount, input#goal-target { font-size: 1.15rem; font-
 #app { position: relative; z-index: 1; }
 .auth-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: var(--bg); }
 .auth-video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.auth-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgb(21 22 29 / .45) 0%, rgb(21 22 29 / .7) 55%, rgb(21 22 29 / .92) 100%); }
+.auth-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgb(21 22 29 / .25) 0%, rgb(21 22 29 / .3) 55%, rgb(21 22 29 / .55) 100%); }
 .auth-bg ~ #app .auth.panel, .auth-bg + #app .auth.panel {
   background: rgb(30 32 41 / .72); border: 1px solid rgb(255 255 255 / .08);
   -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
