@@ -233,7 +233,9 @@ input#tx-amount, input#bud-amount, input#goal-target { font-size: 1.15rem; font-
   form.quick .field:has(.seg),
   form.quick .field:has(#tx-amount),
   form.quick .field:has(#tx-other),
+  form.quick .field:has(#bud-other),
   form.quick .field:has(#tx-desc),
+  form.quick .field:has(#goal-kind),
   form.quick .field:has(#goal-name),
   form.quick > button[type="submit"],
   form.quick > .error { grid-column: 1 / -1; }

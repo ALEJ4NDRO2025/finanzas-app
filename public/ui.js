@@ -282,17 +282,39 @@ const FinanzasUI = (() => {
     }
 
     async function viewPresupuestos() {
-      const budgets = await store.listBudgets(state.month);
+      const [budgets, txs] = await Promise.all([store.listBudgets(state.month), store.listTx(state.month)]);
+      learnCustoms(txs);
+      budgets.forEach((b) => { if (!CATS.gasto.includes(b.category)) state.customs.gasto.add(b.category); });
       const amount = moneyInput('bud-amount', 'Ej: 600.000');
-      const cat = h('select', { id: 'bud-cat' }, CATS.gasto.map((c) => h('option', {}, c)));
+      // Tus categorías propias (las que escribiste en "Otros") aparecen como opciones, antes de "Otros".
+      const customs = [...state.customs.gasto].sort((a, b) => a.localeCompare(b, 'es'));
+      const cat = h('select', { id: 'bud-cat' },
+        CATS.gasto.filter((c) => c !== 'Otros').map((c) => h('option', {}, c)),
+        customs.length ? h('optgroup', { label: 'Tus categorías' }, customs.map((c) => h('option', {}, c))) : null,
+        h('option', {}, 'Otros'));
+      const other = h('input', { id: 'bud-other', maxlength: '40', autocomplete: 'off', list: 'bud-other-list', placeholder: 'Ej: Gimnasio, mascotas, regalos' });
+      const otherField = h('div', { class: 'field', hidden: true }, h('label', { for: 'bud-other' }, '¿Para qué es?'), other,
+        h('datalist', { id: 'bud-other-list' }, customs.map((c) => h('option', { value: c }))));
+      cat.addEventListener('change', () => {
+        const on = cat.value === 'Otros';
+        otherField.hidden = !on; other.required = on;
+        if (on) other.focus(); else other.value = '';
+      });
       const form = h('form', {
         class: 'quick', onsubmit: (e) => {
           e.preventDefault();
           const v = digits(amount.value); if (!v) return toast('Escribe un límite mayor a 0');
-          act(() => store.setBudget({ category: cat.value, month: state.month, limit_amount: v }), 'Presupuesto guardado');
+          let category = cat.value;
+          if (category === 'Otros') {
+            category = other.value.trim().replace(/\s+/g, ' ');
+            if (!category) { other.focus(); return toast('Escribe para qué es el presupuesto'); }
+            category = category.charAt(0).toUpperCase() + category.slice(1);
+          }
+          act(() => store.setBudget({ category, month: state.month, limit_amount: v }), 'Presupuesto guardado');
         },
       },
         h('div', { class: 'field' }, h('label', { for: 'bud-cat' }, 'Categoría'), cat),
+        otherField,
         h('div', { class: 'field' }, h('label', { for: 'bud-amount' }, 'Límite del mes (COP)'), amount),
         h('button', { class: 'btn-primary', type: 'submit' }, 'Guardar límite'));
       const copyPrev = h('button', {
@@ -322,17 +344,32 @@ const FinanzasUI = (() => {
 
     async function viewMetas() {
       const goals = await store.listGoals();
-      const name = h('input', { id: 'goal-name', maxlength: '60', placeholder: 'Ej: Moto, fondo de emergencia', required: true });
+      const GOALS = ['Fondo de emergencia', 'Viaje', 'Moto', 'Carro', 'Casa propia', 'Estudio', 'Celular o computador', 'Regalo', 'Otros'];
+      const kind = h('select', { id: 'goal-kind' }, GOALS.map((g) => h('option', {}, g)));
+      const name = h('input', { id: 'goal-name', maxlength: '60', autocomplete: 'off', placeholder: 'Ej: Gimnasio, boda, PlayStation' });
+      const nameField = h('div', { class: 'field', hidden: true }, h('label', { for: 'goal-name' }, '¿Para qué es?'), name);
+      kind.addEventListener('change', () => {
+        const on = kind.value === 'Otros';
+        nameField.hidden = !on; name.required = on;
+        if (on) name.focus(); else name.value = '';
+      });
       const target = moneyInput('goal-target', 'Ej: 5.000.000');
       const deadline = h('input', { id: 'goal-deadline', type: 'date' });
       const form = h('form', {
         class: 'quick', onsubmit: (e) => {
           e.preventDefault();
           const v = digits(target.value); if (!v) return toast('Escribe una meta mayor a 0');
-          act(() => store.addGoal({ name: name.value.trim(), target: v, ...(deadline.value && { deadline: deadline.value }) }), 'Meta creada');
+          let goalName = kind.value;
+          if (goalName === 'Otros') {
+            goalName = name.value.trim().replace(/\s+/g, ' ');
+            if (!goalName) { name.focus(); return toast('Escribe para qué es la meta'); }
+            goalName = goalName.charAt(0).toUpperCase() + goalName.slice(1);
+          }
+          act(() => store.addGoal({ name: goalName, target: v, ...(deadline.value && { deadline: deadline.value }) }), 'Meta creada');
         },
       },
-        h('div', { class: 'field' }, h('label', { for: 'goal-name' }, 'Para qué ahorras'), name),
+        h('div', { class: 'field' }, h('label', { for: 'goal-kind' }, 'Para qué ahorras'), kind),
+        nameField,
         h('div', { class: 'field' }, h('label', { for: 'goal-target' }, 'Cuánto necesitas (COP)'), target),
         h('div', { class: 'field' }, h('label', { for: 'goal-deadline' }, 'Para cuándo'), deadline),
         h('button', { class: 'btn-primary', type: 'submit' }, 'Crear meta'));
