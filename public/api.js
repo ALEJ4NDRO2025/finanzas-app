@@ -72,9 +72,11 @@ const Api = (() => {
   function showBg() {
     if (bg) return;
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const video = h('video', { class: 'auth-video', muted: true, loop: true, playsinline: true, poster: '/media/login-loop.jpg', preload: reduce ? 'none' : 'auto', 'aria-hidden': 'true' },
-      h('source', { src: '/media/login-loop.mp4', type: 'video/mp4' }),
-      h('source', { src: '/media/login-loop.webm', type: 'video/webm' }));
+    // Versión vertical para celular y horizontal para pantallas anchas (así no se recorta el gráfico).
+    const o = window.innerWidth > window.innerHeight ? 'h' : 'v';
+    const video = h('video', { class: 'auth-video', muted: true, loop: true, playsinline: true, poster: `/media/bolsa-${o}.jpg`, preload: reduce ? 'none' : 'auto', 'aria-hidden': 'true' },
+      h('source', { src: `/media/bolsa-${o}.mp4`, type: 'video/mp4' }),
+      h('source', { src: `/media/bolsa-${o}.webm`, type: 'video/webm' }));
     video.muted = true;
     const toggle = h('button', { class: 'bg-toggle', type: 'button' });
     const sync = () => { toggle.textContent = video.paused ? 'Reproducir fondo' : 'Pausar fondo'; };
