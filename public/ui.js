@@ -74,10 +74,10 @@ const FinanzasUI = (() => {
       return h('header', { class: 'top' },
         h('div', { class: 'brand' }, h('h1', {}, opts.userName ? `Hola, ${opts.userName.split(' ')[0]}` : 'Mis Finanzas'), h('small', {}, 'Mis Finanzas')),
         h('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' }, h('div', { class: 'month' },
-          h('button', { class: 'icon-btn', 'aria-label': 'Mes anterior', onclick: () => { state.month = shiftMonth(state.month, -1); render(); } }, '‹'),
+          h('button', { class: 'icon-btn', 'aria-label': 'Mes anterior', onclick: () => go({ month: shiftMonth(state.month, -1) }) }, '‹'),
           h('strong', {}, monthName(state.month)),
-          h('button', { class: 'icon-btn', 'aria-label': 'Mes siguiente', onclick: () => { state.month = shiftMonth(state.month, 1); render(); } }, '›'),
-          state.month !== thisMonth() ? h('button', { class: 'btn-ghost', onclick: () => { state.month = thisMonth(); render(); } }, 'Hoy') : null),
+          h('button', { class: 'icon-btn', 'aria-label': 'Mes siguiente', onclick: () => go({ month: shiftMonth(state.month, 1) }) }, '›'),
+          state.month !== thisMonth() ? h('button', { class: 'btn-ghost', onclick: () => go({ month: thisMonth() }) }, 'Hoy') : null),
           opts.onLogout ? h('button', { class: 'btn-ghost', onclick: opts.onLogout }, 'Salir') : null));
     }
 
@@ -97,7 +97,7 @@ const FinanzasUI = (() => {
     function tabs() {
       const t = [['resumen', 'Resumen'], ['movimientos', 'Movimientos'], ['presupuestos', 'Presupuestos'], ['metas', 'Metas']];
       return h('nav', { class: 'tabs', role: 'tablist', 'aria-label': 'Secciones' }, t.map(([id, label]) =>
-        h('button', { role: 'tab', 'aria-selected': String(state.tab === id), onclick: () => { state.tab = id; render(); window.scrollTo({ top: 0 }); } }, icon(id), h('span', {}, label))));
+        h('button', { role: 'tab', 'aria-selected': String(state.tab === id), onclick: () => { go({ tab: id }); window.scrollTo({ top: 0 }); } }, icon(id), h('span', {}, label))));
     }
 
     /* ---------- Registrar movimiento ---------- */
@@ -362,25 +362,62 @@ const FinanzasUI = (() => {
       ];
     }
 
+    /* ---------- Skeletons: la forma de cada sección mientras cargan los datos ---------- */
+    const sk = (cls = '', style = '') => h('span', { class: `sk ${cls}`, style, 'aria-hidden': 'true' });
+    const skLines = (...w) => w.map((x) => sk('sk-line', `width:${x}`));
+    const skForm = (fields, wideFirst) => h('div', { class: 'quick sk-form' },
+      Array.from({ length: fields }, (_, i) => h('div', { class: `field${i === 0 && wideFirst ? ' sk-wide' : ''}` }, sk('sk-line sk-label'), sk('sk-input'))),
+      sk('sk-button'));
+    const skPanel = (...kids) => h('section', { class: 'panel' }, sk('sk-line sk-title'), ...kids);
+    const skRow = (w) => h('div', { class: 'sk-row' }, sk('sk-avatar'), h('div', { class: 'sk-stack' }, ...skLines(w, '35%')), sk('sk-line', 'width:5.5em'));
+    const skItem = (w) => h('div', { class: 'item' }, h('div', { class: 'item-head' }, sk('sk-line', `width:${w}`), sk('sk-line', 'width:9em')), sk('sk-meter'), sk('sk-line', 'width:40%'));
+    const SKELETONS = {
+      resumen: () => [
+        h('section', { class: 'balance-card sk-card' }, h('div', { class: 'card-top' }, sk('sk-line', 'width:9em'), sk('sk-line', 'width:2.5em')),
+          h('div', { class: 'sk-stack' }, sk('sk-big'), sk('sk-line', 'width:14em')),
+          h('div', { class: 'flows' }, sk('sk-flow'), sk('sk-flow'))),
+        skPanel(skForm(5, true)),
+        h('div', { class: 'grid2' }, skPanel(sk('sk-chart')), skPanel(...['70%', '55%', '40%'].map((w) => h('div', { class: 'item' }, h('div', { class: 'item-head' }, sk('sk-line', `width:${w}`), sk('sk-line', 'width:6em')), sk('sk-meter'))))),
+      ],
+      movimientos: () => [
+        skPanel(skForm(5, true)),
+        skPanel(h('div', { class: 'days' }, h('div', { class: 'day-head' }, sk('sk-line', 'width:3em'), sk('sk-line', 'width:6em')), ...['60%', '45%', '70%', '50%', '40%'].map(skRow))),
+      ],
+      presupuestos: () => [skPanel(skForm(2)), skPanel(h('div', { class: 'list' }, ...['30%', '40%', '25%'].map(skItem)))],
+      metas: () => [skPanel(skForm(3, true)), skPanel(h('div', { class: 'list' }, ...['35%', '45%'].map(skItem)))],
+    };
+    const skeleton = () => h('div', { class: 'sk-view', 'aria-busy': 'true', 'aria-label': 'Cargando' }, SKELETONS[state.tab]());
+
     const views = { resumen: viewResumen, movimientos: viewMovimientos, presupuestos: viewPresupuestos, metas: viewMetas };
-    let pending = false;
-    async function render() {
-      if (busy) { pending = true; return; }
+    let pending = null;
+    // Al navegar se muestra el skeleton solo si los datos tardan más de 150 ms (así no parpadea).
+    // Al guardar o borrar no hay skeleton: se queda la pantalla actual hasta que llegan los datos.
+    async function render(opts = {}) {
+      if (busy) { pending = opts.skeleton ? opts : (pending || opts); return; }
       busy = true;
+      const shell = (...body) => root.replaceChildren(h('div', { class: 'wrap' }, header(), tabs(), ...body));
+      let timer = null;
+      if (opts.skeleton) {
+        if (opts.now) shell(skeleton());
+        else timer = setTimeout(() => shell(skeleton()), 150);
+      }
       try {
         const body = await views[state.tab]();
+        clearTimeout(timer);
         const focusId = document.activeElement?.id;
-        root.replaceChildren(h('div', { class: 'wrap' }, header(), tabs(), body));
+        shell(body);
         if (focusId) document.getElementById(focusId)?.focus();
       } catch (e) {
-        root.replaceChildren(h('div', { class: 'wrap' }, header(), tabs(), h('div', { class: 'empty' }, e.message || 'No se pudieron cargar los datos.')));
+        clearTimeout(timer);
+        shell(h('div', { class: 'empty' }, e.message || 'No se pudieron cargar los datos.'));
       } finally {
         busy = false;
-        if (pending) { pending = false; render(); }
+        if (pending) { const next = pending; pending = null; render(next); }
       }
     }
-    store.onChange?.(render);
-    render();
+    function go(changes) { Object.assign(state, changes); render({ skeleton: true }); }
+    store.onChange?.(() => render());
+    render({ skeleton: true, now: true });
     return { render };
   }
 

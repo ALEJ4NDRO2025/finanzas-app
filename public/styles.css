@@ -265,3 +265,39 @@ input#tx-amount, input#bud-amount, input#goal-target { font-size: 1.15rem; font-
   background: rgb(0 0 0 / .45); color: #fff; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
 }
 .bg-toggle:hover { background: rgb(0 0 0 / .6); }
+
+/* ---------- Skeletons ---------- */
+.sk {
+  display: block; border-radius: 10px;
+  background: linear-gradient(90deg, var(--surface-2) 30%, var(--line) 50%, var(--surface-2) 70%);
+  background-size: 300% 100%; animation: sk-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes sk-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation: none; background: var(--surface-2); } }
+.sk-line { height: 0.8em; max-width: 100%; }
+.sk-title { height: 1.05em; width: 11em; }
+.sk-label { width: 5em; height: 0.75em; }
+.sk-input { height: 48px; border-radius: var(--r-ctl); }
+.sk-button { height: 44px; border-radius: 999px; }
+.sk-form { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); align-items: end; }
+.sk-form .field { display: grid; gap: 10px; }
+@media (min-width: 700px) { .sk-form .sk-wide { grid-column: span 2; } }
+.sk-stack { display: grid; gap: 10px; min-width: 0; }
+.sk-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 10px 8px; min-height: 64px; }
+.sk-avatar { width: 42px; height: 42px; border-radius: 50%; }
+.sk-meter { height: 10px; border-radius: 999px; }
+.sk-chart { height: 200px; border-radius: 14px; }
+.sk-card { background: var(--surface); }
+.sk-card .sk { background: linear-gradient(90deg, var(--surface-2) 30%, var(--line) 50%, var(--surface-2) 70%); background-size: 300% 100%; }
+.sk-big { height: clamp(2.6rem, 9vw, 4.4rem); width: min(70%, 14em); border-radius: 14px; }
+.sk-flow { height: 72px; border-radius: 18px; }
+@media (max-width: 600px) {
+  .sk-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .sk-form .sk-wide, .sk-form .sk-button { grid-column: 1 / -1; }
+}
+/* Pantalla de arranque (antes de saber si hay sesión) */
+.boot { display: grid; gap: 24px; }
+.boot-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.w-6 { width: 6em; } .w-9 { width: 9em; } .w-14 { width: 14em; }
+.sk-pill { width: 12em; height: 44px; border-radius: 999px; }
+@media (max-width: 600px) { .boot-top { flex-direction: column; align-items: flex-start; } }

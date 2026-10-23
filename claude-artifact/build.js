@@ -12,7 +12,7 @@ fs.writeFileSync(out, `<title>Mis Finanzas</title>
 <style>
 ${read('public/styles.css')}
 </style>
-<div id="app"><div class="wrap"><main class="auth panel"><h1>Mis Finanzas</h1><p class="muted">Cargando tus cuentas…</p></main></div></div>
+<div id="app"><div class="wrap boot" aria-busy="true" aria-label="Cargando"><div class="boot-top"><div class="sk-stack"><span class="sk sk-line w-6"></span><span class="sk sk-line sk-title"></span></div><span class="sk sk-pill"></span></div><section class="balance-card sk-card"><div class="card-top"><span class="sk sk-line w-9"></span></div><div class="sk-stack"><span class="sk sk-big"></span><span class="sk sk-line w-14"></span></div><div class="flows"><span class="sk sk-flow"></span><span class="sk sk-flow"></span></div></section><section class="panel"><span class="sk sk-line sk-title"></span><span class="sk sk-input"></span><span class="sk sk-input"></span></section></div></div>
 <script>
 ${read('public/ui.js')}
 </script>
