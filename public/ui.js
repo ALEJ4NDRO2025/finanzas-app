@@ -61,7 +61,8 @@ const FinanzasUI = (() => {
   }
 
   function mount(root, store, opts = {}) {
-    const state = { month: thisMonth(), tab: 'resumen', txType: 'gasto' };
+    const state = { month: thisMonth(), tab: 'resumen', txType: 'gasto', customs: { gasto: new Set(), ingreso: new Set() } };
+    const learnCustoms = (txs) => txs.forEach((t) => { if (!CATS[t.type].includes(t.category)) state.customs[t.type].add(t.category); });
     let busy = false;
 
     async function act(fn, okMsg) {
@@ -93,6 +94,16 @@ const FinanzasUI = (() => {
       const cat = h('select', { id: 'tx-cat' }, CATS[state.txType].map((c) => h('option', {}, c)));
       const date = h('input', { id: 'tx-date', type: 'date', value: state.month === thisMonth() ? today() : `${state.month}-01`, required: true });
       const desc = h('input', { id: 'tx-desc', maxlength: '140', placeholder: 'Opcional' });
+      // "Otros" pide escribir qué fue; lo que escribas queda como categoría propia y se sugiere la próxima vez.
+      const isGasto = state.txType === 'gasto';
+      const other = h('input', { id: 'tx-other', maxlength: '40', autocomplete: 'off', list: 'tx-other-list', placeholder: isGasto ? 'Ej: Gimnasio, regalo, peluquería' : 'Ej: Bono, préstamo, reembolso' });
+      const otherList = h('datalist', { id: 'tx-other-list' }, [...state.customs[state.txType]].map((c) => h('option', { value: c })));
+      const otherField = h('div', { class: 'field', hidden: true }, h('label', { for: 'tx-other' }, isGasto ? '¿En qué gastaste?' : '¿De dónde vino?'), other, otherList);
+      cat.addEventListener('change', () => {
+        const on = cat.value === 'Otros';
+        otherField.hidden = !on; other.required = on;
+        if (on) other.focus(); else other.value = '';
+      });
       const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Tipo' },
         ['gasto', 'ingreso'].map((t) => h('button', {
           type: 'button', class: t, 'aria-pressed': String(state.txType === t),
@@ -103,13 +114,17 @@ const FinanzasUI = (() => {
           e.preventDefault();
           const value = digits(amount.value);
           if (!value) { err.textContent = 'Escribe un valor mayor a 0.'; err.hidden = false; return; }
-          act(() => store.addTx({ type: state.txType, amount: value, category: cat.value, description: desc.value.trim(), date: date.value }),
+          const category = cat.value === 'Otros' ? other.value.trim().replace(/\s+/g, ' ') : cat.value;
+          if (!category) { err.textContent = isGasto ? 'Escribe en qué gastaste.' : 'Escribe de dónde vino.'; err.hidden = false; other.focus(); return; }
+          const label = category.charAt(0).toUpperCase() + category.slice(1);
+          act(() => store.addTx({ type: state.txType, amount: value, category: label, description: desc.value.trim(), date: date.value }),
             state.txType === 'gasto' ? 'Gasto registrado' : 'Ingreso registrado');
         },
       },
         h('div', { class: 'field' }, h('span', { class: 'label' }, 'Tipo'), seg),
         h('div', { class: 'field' }, h('label', { for: 'tx-amount' }, 'Valor (COP)'), amount),
         h('div', { class: 'field' }, h('label', { for: 'tx-cat' }, 'Categoría'), cat),
+        otherField,
         h('div', { class: 'field' }, h('label', { for: 'tx-date' }, 'Fecha'), date),
         h('div', { class: 'field' }, h('label', { for: 'tx-desc' }, 'Nota'), desc),
         h('button', { class: 'btn-primary', type: 'submit' }, 'Registrar'),
@@ -167,6 +182,7 @@ const FinanzasUI = (() => {
     async function viewResumen() {
       const [s, budgets] = await Promise.all([store.summary(state.month), store.listBudgets(state.month)]);
       const alerts = budgets.filter((b) => b.spent / b.limit_amount >= 0.8);
+      s.byCategory.forEach((c) => { if (!CATS.gasto.includes(c.category)) state.customs.gasto.add(c.category); });
       const gmf = Math.round(s.expense * 0.004);
       return [
         balanceCard(s, gmf),
@@ -183,18 +199,73 @@ const FinanzasUI = (() => {
       ];
     }
 
+    // Una fila por movimiento: se toca para ver el detalle completo y las acciones.
+    // Así el título tiene todo el ancho y borrar nunca aplasta la fila.
+    function txItem(t) {
+      const id = `tx-${t.id}`;
+      const fecha = new Date(`${t.date}T12:00:00`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+      const actions = h('div', { class: 'tx-actions' });
+      const idle = () => actions.replaceChildren(
+        h('button', { class: 'btn-danger', onclick: ask }, 'Borrar'));
+      const ask = () => {
+        actions.replaceChildren(h('span', { class: 'tx-ask' }, '¿Borrar este movimiento?'),
+          h('button', { class: 'btn-ghost', onclick: idle }, 'Cancelar'),
+          h('button', { class: 'btn-danger', onclick: () => act(() => store.deleteTx(t.id), 'Movimiento borrado') }, 'Sí, borrar'));
+        actions.lastChild.focus();
+      };
+      idle();
+      const detail = h('div', { class: 'tx-detail', id, hidden: true },
+        h('dl', {},
+          h('div', {}, h('dt', {}, 'Fecha'), h('dd', {}, fecha.charAt(0).toUpperCase() + fecha.slice(1))),
+          h('div', {}, h('dt', {}, 'Categoría'), h('dd', {}, t.category)),
+          t.description ? h('div', {}, h('dt', {}, 'Nota'), h('dd', {}, t.description)) : null),
+        actions);
+      const row = h('button', {
+        class: 'tx-row', 'aria-expanded': 'false', 'aria-controls': id,
+        onclick: () => {
+          const open = row.getAttribute('aria-expanded') === 'true';
+          root.querySelectorAll('.tx-row[aria-expanded="true"]').forEach((r) => {
+            r.setAttribute('aria-expanded', 'false'); document.getElementById(r.getAttribute('aria-controls')).hidden = true;
+          });
+          if (!open) { row.setAttribute('aria-expanded', 'true'); detail.hidden = false; idle(); }
+        },
+      },
+        h('span', { class: 'avatar', style: `background:${catColor(t.category)}`, 'aria-hidden': 'true' }, t.category.charAt(0).toUpperCase()),
+        h('span', { class: 'tx-main' },
+          h('span', { class: 'tx-title' }, t.description || t.category),
+          t.description ? h('span', { class: 'tx-sub' }, t.category) : null),
+        h('span', { class: `tx-amount num ${t.type}` }, (t.type === 'gasto' ? '− ' : '+ ') + cop(t.amount)));
+      return h('li', { class: 'tx' }, row, detail);
+    }
+
+    function dayLabel(d) {
+      const t = today();
+      const y = new Date(); y.setDate(y.getDate() - 1);
+      if (d === t) return 'Hoy';
+      if (d === `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`) return 'Ayer';
+      const s = new Date(`${d}T12:00:00`).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric' });
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    }
+
     async function viewMovimientos() {
       const txs = await store.listTx(state.month);
+      learnCustoms(txs);
+      const days = [];
+      for (const t of txs) {
+        if (days.at(-1)?.date !== t.date) days.push({ date: t.date, items: [] });
+        days.at(-1).items.push(t);
+      }
       return [
         h('section', { class: 'panel' }, h('h2', {}, 'Registrar movimiento'), txForm()),
         h('section', { class: 'panel' },
-          h('div', { class: 'panel-head' }, h('h2', {}, `Movimientos de ${monthName(state.month)}`), h('span', { class: 'muted' }, `${txs.length} en total`)),
-          txs.length ? h('div', { class: 'list' }, txs.map((t) => h('div', { class: 'row' },
-            h('span', { class: 'avatar', style: `background:${catColor(t.category)}`, 'aria-hidden': 'true' }, t.category.charAt(0)),
-            h('div', { class: 'what' }, h('div', { style: 'font-weight:700' }, t.description || t.category),
-              h('div', { class: 'sub' }, `${t.description ? t.category + ', ' : ''}${Number(t.date.slice(8))} de ${monthName(t.date.slice(0, 7)).split(' ')[0].toLowerCase()}`)),
-            h('span', { class: `amount num ${t.type}` }, (t.type === 'gasto' ? '− ' : '+ ') + cop(t.amount)),
-            deleteButton('Borrar movimiento', () => act(() => store.deleteTx(t.id), 'Movimiento borrado')))))
+          h('div', { class: 'panel-head' }, h('h2', {}, `Movimientos de ${monthName(state.month)}`), h('span', { class: 'muted' }, txs.length === 1 ? '1 movimiento' : `${txs.length} movimientos`)),
+          txs.length ? h('div', { class: 'days' }, days.map((d) => {
+            const net = d.items.reduce((a, t) => a + (t.type === 'ingreso' ? t.amount : -t.amount), 0);
+            return h('section', { class: 'day', 'aria-label': dayLabel(d.date) },
+              h('div', { class: 'day-head' }, h('span', {}, dayLabel(d.date)),
+                h('span', { class: `num ${net >= 0 ? 'pos' : ''}` }, (net >= 0 ? '+ ' : '− ') + cop(Math.abs(net)))),
+              h('ul', { class: 'tx-list' }, d.items.map(txItem)));
+          }))
             : h('div', { class: 'empty' }, 'Sin movimientos este mes. Registra el primero arriba.')),
       ];
     }
