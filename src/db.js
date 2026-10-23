@@ -87,6 +87,9 @@ function CREATE_EXTRA() {
     UNIQUE (user_id, name COLLATE NOCASE)
   );`);
   if (!tcols.includes('pocket_id')) db.exec('ALTER TABLE transactions ADD COLUMN pocket_id INTEGER REFERENCES pockets(id) ON DELETE SET NULL');
+  // Presupuestos: 'mes' (un límite para el mes) o 'semana' (un límite por semana que se repite desde ese mes).
+  const bcols = db.prepare('PRAGMA table_info(budgets)').all().map((c) => c.name);
+  if (!bcols.includes('period')) db.exec("ALTER TABLE budgets ADD COLUMN period TEXT NOT NULL DEFAULT 'mes'");
 }
 
 // Limpieza: tokens vencidos e intentos viejos no se acumulan para siempre.

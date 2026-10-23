@@ -4,6 +4,7 @@ const { z } = require('zod');
 const db = require('../db');
 const ApiError = require('../utils/ApiError');
 const validate = require('../middlewares/validate');
+const { splitWeek, weeksOfMonth, referenceWeek } = require('../utils/periods');
 
 const router = express.Router();
 
@@ -65,6 +66,14 @@ function ensurePockets(userId) {
     const orphans = db.prepare('SELECT id, type, category, goal_id FROM transactions WHERE user_id = ? AND pocket_id IS NULL').all(userId);
     const upd = db.prepare('UPDATE transactions SET pocket_id = ? WHERE id = ? AND user_id = ?');
     for (const t of orphans) upd.run(defaultPocketId(t, pockets), t.id, userId);
+    // Categorías con la semana en el nombre ("Almuerzos semana 2") → "Almuerzos"; la semana queda como nota.
+    const weekly = db.prepare(`SELECT id, category, description FROM transactions WHERE user_id = ? AND goal_id IS NULL
+      AND (lower(category) LIKE '%sem%' OR lower(category) GLOB '*[ -]s[0-9]*')`).all(userId);
+    const fix = db.prepare('UPDATE transactions SET category = ?, description = ? WHERE id = ? AND user_id = ?');
+    for (const t of weekly) {
+      const { category: cat, week } = splitWeek(t.category);
+      if (week) fix.run(cat, t.description || week, t.id, userId);
+    }
     db.exec('COMMIT');
     seeded.add(userId);
   } catch (e) { db.exec('ROLLBACK'); throw e; }
@@ -134,7 +143,10 @@ const goalProgress = (id, userId) => shapeGoal(db.prepare(`${GOAL_SQL} AND g.id 
 
 // Si el movimiento va a una meta: debe ser un gasto, la meta debe ser tuya y la categoría es el nombre de la meta.
 function linkGoal(t, userId) {
-  if (!t.goal_id) return { ...t, goal_id: null };
+  if (!t.goal_id) {
+    const { category: cat, week } = splitWeek(t.category);
+    return { ...t, category: cat, description: t.description || week || '', goal_id: null };
+  }
   if (t.type !== 'gasto') throw new ApiError(400, 'Solo los gastos se pueden mandar a una meta de ahorro');
   const goal = ownOr404('goals', t.goal_id, userId);
   return { ...t, category: goal.name };
@@ -174,24 +186,47 @@ router.delete('/transactions/:id', validate(idParam), (req, res) => {
 });
 
 /* ---------- Presupuestos ---------- */
+// Mensual: un límite para el mes. Semanal: un límite por semana (lunes a domingo) que se repite desde el mes
+// en que se creó. Lo enviado a metas no cuenta como gasto.
+const spentBetween = (userId, category, from, to) => db.prepare(`SELECT COALESCE(SUM(amount), 0) AS s FROM transactions
+  WHERE user_id = ? AND type = 'gasto' AND goal_id IS NULL AND category = ? AND date BETWEEN ? AND ?`).get(userId, category, from, to).s;
+
 router.get('/budgets', validate({ query: z.object({ month: month.optional() }).strict() }), (req, res) => {
   const m = req.valid.query.month ?? currentMonth();
-  const rows = db.prepare(`
-    SELECT b.id, b.category, b.month, b.limit_amount,
-      COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.user_id = b.user_id AND t.type = 'gasto' AND t.goal_id IS NULL
-        AND t.category = b.category AND substr(t.date,1,7) = b.month), 0) AS spent
-    FROM budgets b WHERE b.user_id = ? AND b.month = ? ORDER BY b.category`).all(req.userId, m);
+  const monthly = db.prepare(`SELECT id, category, month, limit_amount, period FROM budgets
+    WHERE user_id = ? AND period = 'mes' AND month = ?`).all(req.userId, m);
+  const weekly = db.prepare(`SELECT id, category, month, limit_amount, period FROM budgets
+    WHERE user_id = ? AND period = 'semana' AND month <= ?`).all(req.userId, m)
+    .filter((b) => !monthly.some((x) => x.category === b.category)); // un mensual de ese mes manda sobre el semanal
+  const weeks = weeksOfMonth(m);
+  const ref = referenceWeek(weeks);
+  const rows = [
+    ...monthly.map((b) => ({ ...b, spent: spentBetween(req.userId, b.category, `${m}-01`, `${m}-31`) })),
+    ...weekly.map((b) => {
+      const list = weeks.map((w) => ({ ...w, spent: spentBetween(req.userId, b.category, w.start, w.end) }));
+      const cur = list.find((w) => w.n === ref.n);
+      // spent y limit_amount son los de la semana de referencia, así las alertas funcionan igual que en los mensuales.
+      return { ...b, spent: cur.spent, week: { n: cur.n, start: cur.start, end: cur.end }, weeks: list };
+    }),
+  ].sort((a, b) => a.category.localeCompare(b.category, 'es'));
   res.json({ budgets: rows });
 });
 
-// Crear o actualizar (un presupuesto por categoría y mes).
+// Crear o actualizar. Un presupuesto por categoría: guardar uno semanal reemplaza al semanal anterior de esa categoría.
 router.put('/budgets', validate({
-  body: z.object({ category, month, limit_amount: money }).strict(),
+  body: z.object({ category, month, limit_amount: money, period: z.enum(['mes', 'semana']).default('mes') }).strict(),
 }), (req, res) => {
-  const b = req.valid.body;
-  db.prepare(`INSERT INTO budgets (user_id, category, month, limit_amount) VALUES (?, ?, ?, ?)
-    ON CONFLICT (user_id, category, month) DO UPDATE SET limit_amount = excluded.limit_amount`)
-    .run(req.userId, b.category, b.month, b.limit_amount);
+  const b = { ...req.valid.body, category: splitWeek(req.valid.body.category).category };
+  db.exec('BEGIN');
+  try {
+    if (b.period === 'semana') {
+      db.prepare("DELETE FROM budgets WHERE user_id = ? AND category = ? AND period = 'semana' AND month != ?").run(req.userId, b.category, b.month);
+    }
+    db.prepare(`INSERT INTO budgets (user_id, category, month, limit_amount, period) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (user_id, category, month) DO UPDATE SET limit_amount = excluded.limit_amount, period = excluded.period`)
+      .run(req.userId, b.category, b.month, b.limit_amount, b.period);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
   res.json({ budget: b });
 });
 
@@ -274,5 +309,8 @@ router.get('/summary', validate({ query: z.object({ month: month.optional() }).s
     balance: totals.income - totals.expense - totals.saved, byCategory, pockets, trend,
   });
 });
+
+// Solo para pruebas: simula un arranque nuevo del servidor (vuelve a correr la preparación por usuario).
+router.resetPreparedUsers = () => seeded.clear();
 
 module.exports = router;

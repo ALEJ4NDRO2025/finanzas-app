@@ -3,7 +3,7 @@
 'use strict';
 const FinanzasUI = (() => {
   const CATS = {
-    gasto: ['Mercado', 'Arriendo', 'Servicios', 'Transporte', 'Plan celular', 'Salud', 'Educación', 'Salidas', 'Ropa', 'Deudas', 'Otros'],
+    gasto: ['Mercado', 'Almuerzos', 'Arriendo', 'Servicios', 'Transporte', 'Plan celular', 'Salud', 'Educación', 'Salidas', 'Ropa', 'Deudas', 'Otros'],
     ingreso: ['Salario', 'Freelance', 'Ventas', 'Prima', 'Otros'],
   };
 
@@ -17,6 +17,35 @@ const FinanzasUI = (() => {
   const thisMonth = () => today().slice(0, 7);
   const shiftMonth = (m, k) => { const [y, mo] = m.split('-').map(Number); const d = new Date(y, mo - 1 + k, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
   const monthName = (m, short) => { const [y, mo] = m.split('-').map(Number); const t = new Date(y, mo - 1, 1).toLocaleDateString('es-CO', short ? { month: 'short' } : { month: 'long', year: 'numeric' }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  // Semanas y categorías (misma lógica que src/utils/periods.js del servidor).
+  const WEEK_SUFFIX = /^(.*?)[\s\-–—_:,.(]*\b(?:semana|sem|s)\.?\s*(\d{1,2})\)?\s*$/i;
+  function splitWeek(category) {
+    const m = String(category).trim().match(WEEK_SUFFIX);
+    if (!m || !m[1].trim()) return { category: String(category).trim(), week: null };
+    const base = m[1].trim().replace(/\s+/g, ' ');
+    return { category: base.charAt(0).toUpperCase() + base.slice(1), week: `Semana ${Number(m[2])}` };
+  }
+  const isoUTC = (d) => d.toISOString().slice(0, 10);
+  const addDays = (s, n) => { const d = new Date(`${s}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return isoUTC(d); };
+  function weeksOfMonth(month) {
+    const first = `${month}-01`;
+    const [y, m] = month.split('-').map(Number);
+    const last = isoUTC(new Date(Date.UTC(y, m, 0)));
+    const dow = (new Date(`${first}T00:00:00Z`).getUTCDay() + 6) % 7;
+    const weeks = [];
+    for (let start = addDays(first, -dow); start <= last; start = addDays(start, 7)) weeks.push({ n: weeks.length + 1, start, end: addDays(start, 6) });
+    return weeks;
+  }
+  function referenceWeek(weeks, now) {
+    const t = now ?? today();
+    return weeks.find((w) => w.start <= t && t <= w.end) ?? (t > weeks.at(-1).end ? weeks.at(-1) : weeks[0]);
+  }
+  // "19–25 oct", o "28 sept – 4 oct" si la semana cruza de mes.
+  function rangeLabel(start, end) {
+    const f = (s, withMonth) => { const d = new Date(`${s}T12:00:00`); return withMonth ? `${d.getDate()} ${d.toLocaleDateString('es-CO', { month: 'short' }).replace('.', '')}` : String(d.getDate()); };
+    return start.slice(0, 7) === end.slice(0, 7) ? `${f(start)}–${f(end, true)}` : `${f(start, true)} – ${f(end, true)}`;
+  }
+
   const digits = (s) => Number(String(s).replace(/\D/g, '')) || 0;
 
   // Crea elementos de forma segura.
@@ -106,7 +135,7 @@ const FinanzasUI = (() => {
   }
 
   function mount(root, store, opts = {}) {
-    const state = { month: thisMonth(), tab: 'resumen', txType: 'gasto', customs: { gasto: new Set(), ingreso: new Set() }, goals: [], pockets: [], editPockets: false };
+    const state = { month: thisMonth(), tab: 'resumen', txType: 'gasto', customs: { gasto: new Set(), ingreso: new Set() }, goals: [], pockets: [], editPockets: false, budPeriod: 'mes' };
     const learnCustoms = (txs) => txs.forEach((t) => { if (!CATS[t.type].includes(t.category)) state.customs[t.type].add(t.category); });
     let busy = false;
 
@@ -327,7 +356,7 @@ const FinanzasUI = (() => {
         h('section', { class: 'panel', 'aria-label': 'Registrar movimiento' }, h('h2', {}, 'Registrar movimiento'), txForm()),
         alerts.length ? h('section', { class: 'panel' }, h('h2', {}, 'Ojo con estos presupuestos'),
           h('div', { class: 'badge-row' }, alerts.map((b) => h('span', { class: `chip ${b.spent > b.limit_amount ? 'over' : 'warn'}` },
-            `${b.category}: ${Math.round((b.spent / b.limit_amount) * 100)}%`)))) : null,
+            `${b.category}${b.period === 'semana' ? ' (esta semana)' : ''}: ${Math.round((b.spent / b.limit_amount) * 100)}%`)))) : null,
         h('div', { class: 'grid2' },
           h('section', { class: 'panel' },
             h('div', { class: 'panel-head' }, h('h2', {}, 'Últimos 6 meses'),
@@ -432,6 +461,23 @@ const FinanzasUI = (() => {
         otherField.hidden = !on; other.required = on;
         if (on) other.focus(); else other.value = '';
       });
+      // Por mes o por semana. El semanal se repite solo cada semana desde este mes.
+      const amountLabel = h('label', { for: 'bud-amount' });
+      const hint = h('p', { class: 'muted', style: 'margin:0' });
+      const setPeriod = (v) => {
+        state.budPeriod = v;
+        period.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+        amountLabel.textContent = v === 'semana' ? 'Límite semanal' : 'Límite del mes';
+        amount.placeholder = v === 'semana' ? 'Ej: 50.000' : 'Ej: 600.000';
+        hint.textContent = v === 'semana'
+          ? 'Se repite cada semana, de lunes a domingo. Registra tus gastos solo con el nombre (ej: Almuerzos) y la fecha decide la semana.'
+          : 'Si ya existe para este mes, se actualiza.';
+      };
+      const period = h('div', { class: 'seg', role: 'group', 'aria-label': 'Cada cuánto' },
+        [['mes', 'Por mes'], ['semana', 'Por semana']].map(([v, label]) => h('button', {
+          type: 'button', 'data-v': v, 'aria-pressed': String(state.budPeriod === v), onclick: () => setPeriod(v),
+        }, label)));
+      setPeriod(state.budPeriod);
       const form = h('form', {
         class: 'quick', onsubmit: (e) => {
           e.preventDefault();
@@ -442,34 +488,47 @@ const FinanzasUI = (() => {
             if (!category) { other.focus(); return toast('Escribe para qué es el presupuesto'); }
             category = category.charAt(0).toUpperCase() + category.slice(1);
           }
-          act(() => store.setBudget({ category, month: state.month, limit_amount: v }), 'Presupuesto guardado');
+          act(() => store.setBudget({ category, month: state.month, limit_amount: v, period: state.budPeriod }), 'Presupuesto guardado');
         },
       },
+        h('div', { class: 'field' }, h('span', { class: 'label' }, 'Cada cuánto'), period),
         h('div', { class: 'field' }, h('label', { for: 'bud-cat' }, 'Categoría'), cat),
         otherField,
-        h('div', { class: 'field' }, h('label', { for: 'bud-amount' }, 'Límite del mes (COP)'), amount),
+        h('div', { class: 'field' }, amountLabel, amount),
         h('button', { class: 'btn-primary', type: 'submit' }, 'Guardar límite'));
       const copyPrev = h('button', {
         class: 'btn-ghost', onclick: () => act(async () => {
           const prev = await store.listBudgets(shiftMonth(state.month, -1));
-          if (!prev.length) throw new Error('El mes anterior no tiene presupuestos');
-          for (const b of prev) await store.setBudget({ category: b.category, month: state.month, limit_amount: b.limit_amount });
+          const monthly = prev.filter((b) => b.period !== 'semana'); // los semanales ya se repiten solos
+          if (!monthly.length) throw new Error('El mes anterior no tiene presupuestos mensuales para copiar');
+          for (const b of monthly) await store.setBudget({ category: b.category, month: state.month, limit_amount: b.limit_amount, period: 'mes' });
         }, 'Copiados del mes anterior'),
       }, 'Copiar del mes anterior');
       return [
         h('section', { class: 'panel' }, h('div', { class: 'panel-head' }, h('h2', {}, 'Ponerle límite a una categoría'), copyPrev),
-          h('p', { class: 'muted', style: 'margin:0' }, 'Si ya existe para este mes, se actualiza.'), form),
+          hint, form),
         h('section', { class: 'panel' }, h('h2', {}, `Presupuestos de ${monthName(state.month)}`),
           budgets.length ? h('div', { class: 'list' }, budgets.map((b) => {
             const pct = b.spent / b.limit_amount;
             const level = pct > 1 ? 'over' : pct >= 0.8 ? 'warn' : '';
+            const isWeek = b.period === 'semana' && b.week;
+            const weekStrip = isWeek ? h('ol', { class: 'week-strip', 'aria-label': 'Semanas del mes' }, b.weeks.map((w) => {
+              const wp = w.spent / b.limit_amount;
+              const st = w.spent === 0 ? 'empty' : wp > 1 ? 'over' : wp >= 0.8 ? 'warn' : 'ok';
+              return h('li', { class: `wk ${st}${w.n === b.week.n ? ' current' : ''}`, title: `${rangeLabel(w.start, w.end)}: ${cop(w.spent)} de ${cop(b.limit_amount)}` },
+                h('span', { class: 'wk-n' }, `Sem ${w.n}`),
+                h('span', { class: 'wk-bar' }, h('span', { style: `height:${Math.min(100, wp * 100)}%` })),
+                h('span', { class: 'wk-v num' }, w.spent ? compact(w.spent) : '—'));
+            })) : null;
             return h('div', { class: 'item' },
               h('div', { class: 'item-head' },
-                h('span', {}, b.category, ' ', level ? h('span', { class: `chip ${level}` }, level === 'over' ? 'Pasado' : 'Cerca del límite') : null),
+                h('span', {}, b.category, ' ', isWeek ? h('span', { class: 'chip' }, 'Semanal') : null, ' ', level ? h('span', { class: `chip ${level}` }, level === 'over' ? 'Pasado' : 'Cerca del límite') : null),
                 h('span', {}, h('span', { class: 'num' }, `${cop(b.spent)} de ${cop(b.limit_amount)}`),
                   deleteButton('Borrar presupuesto', () => act(() => store.deleteBudget(b.id), 'Presupuesto borrado')))),
+              isWeek ? h('span', { class: 'muted', style: 'font-size:.82rem;margin-top:-4px' }, `Semana ${b.week.n} · ${rangeLabel(b.week.start, b.week.end)}`) : null,
               h('div', { class: `meter ${level}` }, h('span', { style: `width:${Math.min(100, pct * 100)}%` })),
-              h('span', { class: 'muted', style: 'font-size:.82rem' }, pct > 1 ? `Te pasaste por ${cop(b.spent - b.limit_amount)}` : `Te quedan ${cop(b.limit_amount - b.spent)}`));
+              h('span', { class: 'muted', style: 'font-size:.82rem' }, pct > 1 ? `Te pasaste por ${cop(b.spent - b.limit_amount)}` : `Te quedan ${cop(b.limit_amount - b.spent)}${isWeek ? ' esta semana' : ''}`),
+              weekStrip);
           })) : h('div', { class: 'empty' }, 'Sin presupuestos este mes. Ponle límite a Mercado o Salidas para empezar.')),
       ];
     }
@@ -591,5 +650,5 @@ const FinanzasUI = (() => {
     return { render };
   }
 
-  return { mount, h, toast };
+  return { mount, h, toast, splitWeek, weeksOfMonth, referenceWeek };
 })();

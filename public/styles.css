@@ -359,3 +359,17 @@ input#tx-amount, input#bud-amount, input#goal-target { font-size: 1.15rem; font-
   .pk-row { grid-template-columns: 1fr; }
   form.quick .field:has(#tx-pocket) { grid-column: 1 / -1; }
 }
+
+/* ---------- Presupuestos semanales ---------- */
+.week-strip { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(48px, 1fr)); gap: 6px; }
+.wk { background: var(--surface-2); border-radius: 12px; padding: 8px 4px; display: grid; justify-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--muted); border: 1px solid transparent; }
+.wk.current { border-color: var(--line); color: var(--fg); }
+.wk-bar { width: 10px; height: 40px; border-radius: 999px; background: var(--surface); display: flex; align-items: flex-end; overflow: hidden; }
+.wk-bar > span { display: block; width: 100%; border-radius: 999px; background: var(--income); }
+.wk.warn .wk-bar > span { background: var(--warn); }
+.wk.over .wk-bar > span { background: var(--expense); }
+.wk.over .wk-v { color: var(--expense); }
+.wk-v { color: var(--fg); }
+.wk.empty .wk-v { color: var(--muted); }
+@media (max-width: 600px) { form.quick .field:has(.seg) { grid-column: 1 / -1; } }
+.seg button[data-v][aria-pressed="true"] { background: var(--fg); color: var(--bg); }

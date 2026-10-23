@@ -2,7 +2,7 @@
    privado de cada persona (data/users/<id>), que nadie más puede leer — ni el dueño. */
 'use strict';
 (async () => {
-  const { h, mount } = FinanzasUI;
+  const { h, mount, splitWeek, weeksOfMonth, referenceWeek } = FinanzasUI;
   const root = document.getElementById('app');
   const notice = (title, text) => root.replaceChildren(h('div', { class: 'wrap' },
     h('main', { class: 'auth panel' }, h('h1', {}, title), h('p', { class: 'muted', style: 'margin:0' }, text))));
@@ -80,7 +80,10 @@
     },
     async addTx(t) {
       check(['ingreso', 'gasto'].includes(t.type) && okMoney(t.amount) && okDay(t.date) && t.category, 'Revisa el valor y la fecha');
-      let category = t.category; let goalId = null;
+      // "Almuerzos semana 2" → "Almuerzos"; la semana queda como nota si no había nota.
+      const parts = splitWeek(t.category);
+      let category = parts.category; let goalId = null;
+      const description = String(t.description || '').slice(0, 140) || (t.goal_id ? '' : parts.week || '');
       if (t.goal_id) {
         // Igual que el servidor: solo gastos, a una meta tuya, y la categoría es el nombre de la meta.
         check(t.type === 'gasto', 'Solo los gastos se pueden mandar a una meta de ahorro');
@@ -94,7 +97,7 @@
       else pocketId = defaultPocketId({ ...t, goal_id: goalId }, list);
       // Progreso calculado antes de guardar: el snapshot puede tardar en traer el gasto nuevo.
       const before = goalId ? this.goalProgress(goalId) : null;
-      await col.doc('tx-' + newId()).set({ kind: 'tx', type: t.type, amount: t.amount, category, date: t.date, goal_id: goalId, pocket_id: pocketId, description: String(t.description || '').slice(0, 140), createdAt: Date.now() }).catch(writeFail);
+      await col.doc('tx-' + newId()).set({ kind: 'tx', type: t.type, amount: t.amount, category, date: t.date, goal_id: goalId, pocket_id: pocketId, description, createdAt: Date.now() }).catch(writeFail);
       return before ? { goal: { ...before, saved: before.saved + t.amount, from_tx: before.from_tx + t.amount, tx_count: before.tx_count + 1 } } : {};
     },
     // Lo ahorrado = aportes manuales + gastos enlazados (calculado, así borrar un movimiento ajusta la meta).
@@ -130,15 +133,35 @@
       }
       await col.doc(id).delete().catch(writeFail);
     },
+    // Mensual: límite del mes. Semanal: límite por semana (lunes a domingo) que se repite desde su mes.
     async listBudgets(m) {
-      const spent = {};
-      txOf(m).filter((t) => t.type === 'gasto' && !t.goal_id).forEach((t) => { spent[t.category] = (spent[t.category] || 0) + t.amount; });
-      return ofKind('budget').filter((b) => b.month === m).sort((a, b) => a.category.localeCompare(b.category))
-        .map((b) => ({ id: b._id, category: b.category, month: b.month, limit_amount: b.limit_amount, spent: spent[b.category] || 0 }));
+      const gastos = ofKind('tx').filter((t) => t.type === 'gasto' && !t.goal_id);
+      const spentBetween = (cat, from, to) => gastos.filter((t) => t.category === cat && t.date >= from && t.date <= to).reduce((a, t) => a + t.amount, 0);
+      const all = ofKind('budget');
+      const monthly = all.filter((b) => (b.period || 'mes') === 'mes' && b.month === m);
+      const weekly = all.filter((b) => b.period === 'semana' && b.month <= m && !monthly.some((x) => x.category === b.category));
+      const weeks = weeksOfMonth(m);
+      const ref = referenceWeek(weeks);
+      return [
+        ...monthly.map((b) => ({ id: b._id, category: b.category, month: b.month, limit_amount: b.limit_amount, period: 'mes', spent: spentBetween(b.category, `${m}-01`, `${m}-31`) })),
+        ...weekly.map((b) => {
+          const list = weeks.map((w) => ({ ...w, spent: spentBetween(b.category, w.start, w.end) }));
+          const cur = list.find((w) => w.n === ref.n);
+          return { id: b._id, category: b.category, month: b.month, limit_amount: b.limit_amount, period: 'semana', spent: cur.spent, week: { n: cur.n, start: cur.start, end: cur.end }, weeks: list };
+        }),
+      ].sort((a, b) => a.category.localeCompare(b.category, 'es'));
     },
     async setBudget(b) {
       check(okMonth(b.month) && okMoney(b.limit_amount) && b.category, 'Revisa el límite');
-      await col.doc(`b-${b.month}-${slug(b.category)}`).set({ kind: 'budget', ...b }).catch(writeFail);
+      const period = b.period === 'semana' ? 'semana' : 'mes';
+      const category = splitWeek(b.category).category;
+      if (period === 'semana') {
+        // Un solo semanal por categoría: se reemplaza el anterior.
+        for (const old of ofKind('budget').filter((x) => x.period === 'semana' && x.category === category && x.month !== b.month)) {
+          await col.doc(old._id).delete().catch(writeFail);
+        }
+      }
+      await col.doc(`b-${b.month}-${slug(category)}`).set({ kind: 'budget', category, month: b.month, limit_amount: b.limit_amount, period }).catch(writeFail);
     },
     deleteBudget: (id) => col.doc(id).delete().catch(writeFail),
     async listGoals() {
@@ -161,6 +184,11 @@
     deleteGoal: (id) => col.doc(id).delete().catch(writeFail),
   };
 
+  // Gastos viejos con la semana en el nombre ("Almuerzos SEMANA 2") → "Almuerzos" + nota "Semana 2".
+  for (const t of ofKind('tx').filter((x) => !x.goal_id)) {
+    const { category, week } = splitWeek(t.category);
+    if (week) await col.doc(t._id).update({ category, description: t.description || week }).catch(() => {});
+  }
   if (!ofKind('pocket').length) {
     await col.doc('pk-sostenimiento').set({ kind: 'pocket', name: 'Sostenimiento', position: 0 }).catch(() => {});
     await col.doc('pk-ahorro').set({ kind: 'pocket', name: 'Ahorro', position: 1 }).catch(() => {});

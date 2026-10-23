@@ -260,6 +260,51 @@ describe('Bolsillos', () => {
   });
 });
 
+describe('Presupuestos semanales', () => {
+  test('"Almuerzos semana 2" se guarda como Almuerzos y la semana queda de nota', async () => {
+    const c = await client();
+    await c.send('post', '/api/auth/register', { name: 'Alm', email: 'alm@x.co', password: PASS });
+    const r = await c.send('post', '/api/transactions', { type: 'gasto', amount: 50000, category: 'Almuerzos semana 2', date: '2026-10-07' });
+    assert.equal(r.body.transaction.category, 'Almuerzos');
+    assert.equal(r.body.transaction.description, 'Semana 2');
+    const r2 = await c.send('post', '/api/transactions', { type: 'gasto', amount: 1, category: 'Semana santa', date: '2026-10-07' });
+    assert.equal(r2.body.transaction.category, 'Semana santa');
+  });
+
+  test('semanal: cuenta cada semana por fecha, también la que cruza de mes', async () => {
+    const c = await client();
+    await c.send('post', '/api/auth/register', { name: 'Sem', email: 'sem@x.co', password: PASS });
+    const gasto = (amount, date) => c.send('post', '/api/transactions', { type: 'gasto', amount, category: 'Almuerzos', date });
+    await gasto(30000, '2026-09-29'); // semana 1 de octubre empieza el lunes 28 de sept.
+    await gasto(20000, '2026-10-02');
+    await gasto(50000, '2026-10-07');
+    await gasto(60000, '2026-10-14');
+    await c.send('put', '/api/budgets', { category: 'Almuerzos', month: '2026-10', limit_amount: 50000, period: 'semana' });
+    const b = (await c.agent.get('/api/budgets?month=2026-10')).body.budgets[0];
+    assert.equal(b.period, 'semana');
+    assert.deepEqual(b.weeks.slice(0, 3).map((w) => w.spent), [50000, 50000, 60000]);
+    assert.equal(b.weeks.length, 5);
+    // se repite en los meses siguientes sin volver a crearlo
+    const nov = (await c.agent.get('/api/budgets?month=2026-11')).body.budgets;
+    assert.equal(nov[0].category, 'Almuerzos');
+    assert.equal((await c.agent.get('/api/budgets?month=2026-09')).body.budgets.length, 0);
+  });
+
+  test('los gastos viejos con la semana en el nombre se unen solos', async () => {
+    const c = await client();
+    await c.send('post', '/api/auth/register', { name: 'Viejo', email: 'viejoalm@x.co', password: PASS });
+    const db = require('../src/db');
+    const uid = db.prepare("SELECT id FROM users WHERE email = 'viejoalm@x.co'").get().id;
+    for (const n of [1, 2, 3]) db.prepare("INSERT INTO transactions (user_id, type, amount, category, date) VALUES (?, 'gasto', 50000, ?, '2026-10-0' || ?)").run(uid, `Almuerzos SEMANA ${n}`, n + 1);
+    // la unión corre la primera vez que el usuario usa la API en este arranque: se simula un arranque nuevo
+    require('../src/routes/finance').resetPreparedUsers();
+    const txs = (await c.agent.get('/api/transactions?month=2026-10')).body.transactions;
+    assert.equal(txs.length, 3);
+    assert.ok(txs.every((t) => t.category === 'Almuerzos'));
+    assert.deepEqual(txs.map((t) => t.description).sort(), ['Semana 1', 'Semana 2', 'Semana 3']);
+  });
+});
+
 describe('Versión del frontend', () => {
   test('la página trae su versión y JS/CSS con esa versión en la URL', async () => {
     const r = await request(app).get('/');
