@@ -78,6 +78,15 @@ function CREATE_EXTRA() {
   // Movimientos que alimentan una meta de ahorro. Si la meta se borra, el movimiento queda sin meta.
   const tcols = db.prepare('PRAGMA table_info(transactions)').all().map((c) => c.name);
   if (!tcols.includes('goal_id')) db.exec('ALTER TABLE transactions ADD COLUMN goal_id INTEGER REFERENCES goals(id) ON DELETE SET NULL');
+  // Bolsillos: cada movimiento entra o sale de uno (Sostenimiento, Ahorro, los que cree la persona).
+  db.exec(`CREATE TABLE IF NOT EXISTS pockets (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    UNIQUE (user_id, name COLLATE NOCASE)
+  );`);
+  if (!tcols.includes('pocket_id')) db.exec('ALTER TABLE transactions ADD COLUMN pocket_id INTEGER REFERENCES pockets(id) ON DELETE SET NULL');
 }
 
 // Limpieza: tokens vencidos e intentos viejos no se acumulan para siempre.

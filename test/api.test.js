@@ -193,6 +193,73 @@ describe('Recuperación de contraseña', () => {
   });
 });
 
+describe('Bolsillos', () => {
+  test('arranca con Sostenimiento y Ahorro y reparte por defecto', async () => {
+    const c = await client();
+    await c.send('post', '/api/auth/register', { name: 'Bols', email: 'bols@x.co', password: PASS });
+    const pockets = (await c.agent.get('/api/pockets')).body.pockets;
+    assert.deepEqual(pockets.map((p) => p.name), ['Sostenimiento', 'Ahorro']);
+    const [sost, ahorro] = pockets;
+    const post = (b) => c.send('post', '/api/transactions', { date: '2026-10-05', ...b });
+    assert.equal((await post({ type: 'ingreso', amount: 2000000, category: 'Salario' })).body.transaction.pocket_id, sost.id);
+    assert.equal((await post({ type: 'ingreso', amount: 500000, category: 'Freelance' })).body.transaction.pocket_id, ahorro.id);
+    assert.equal((await post({ type: 'gasto', amount: 300000, category: 'Mercado' })).body.transaction.pocket_id, sost.id);
+    // se puede elegir otro bolsillo a mano
+    assert.equal((await post({ type: 'gasto', amount: 50000, category: 'Salidas', pocket_id: ahorro.id })).body.transaction.pocket_id, ahorro.id);
+    const g = (await c.send('post', '/api/goals', { name: 'Viaje', target: 1000000 })).body.goal;
+    assert.equal((await post({ type: 'gasto', amount: 200000, category: 'x', goal_id: g.id })).body.transaction.pocket_id, ahorro.id);
+
+    const s = (await c.agent.get('/api/summary?month=2026-10')).body;
+    // lo enviado a la meta no es gasto: es ahorro
+    assert.equal(s.expense, 350000);
+    assert.equal(s.saved, 200000);
+    assert.equal(s.balance, 2500000 - 350000 - 200000);
+    assert.ok(!s.byCategory.some((x) => x.category === 'Viaje'));
+    const ps = Object.fromEntries(s.pockets.map((p) => [p.name, p]));
+    assert.deepEqual([ps.Sostenimiento.income, ps.Sostenimiento.expense, ps.Sostenimiento.left], [2000000, 300000, 1700000]);
+    assert.deepEqual([ps.Ahorro.income, ps.Ahorro.expense, ps.Ahorro.saved, ps.Ahorro.left], [500000, 50000, 200000, 250000]);
+  });
+
+  test('crear, renombrar y borrar moviendo los movimientos', async () => {
+    const c = await client();
+    await c.send('post', '/api/auth/register', { name: 'Bols2', email: 'bols2@x.co', password: PASS });
+    const nuevo = (await c.send('post', '/api/pockets', { name: 'inversión' })).body.pocket;
+    assert.equal(nuevo.name, 'Inversión');
+    assert.equal((await c.send('post', '/api/pockets', { name: 'INVERSIÓN' })).status, 409);
+    assert.equal((await c.send('patch', `/api/pockets/${nuevo.id}`, { name: 'Inversiones' })).status, 200);
+    await c.send('post', '/api/transactions', { type: 'ingreso', amount: 100000, category: 'Ventas', date: '2026-10-05', pocket_id: nuevo.id });
+    assert.equal((await c.send('delete', `/api/pockets/${nuevo.id}`)).status, 409);
+    const sost = (await c.agent.get('/api/pockets')).body.pockets[0];
+    assert.equal((await c.send('delete', `/api/pockets/${nuevo.id}?move_to=${sost.id}`)).status, 204);
+    const tx = (await c.agent.get('/api/transactions?month=2026-10')).body.transactions[0];
+    assert.equal(tx.pocket_id, sost.id);
+  });
+
+  test('siempre queda un bolsillo y no se usan bolsillos ajenos', async () => {
+    const a = await client();
+    await a.send('post', '/api/auth/register', { name: 'Uno', email: 'uno@x.co', password: PASS });
+    const [p1, p2] = (await a.agent.get('/api/pockets')).body.pockets;
+    assert.equal((await a.send('delete', `/api/pockets/${p2.id}`)).status, 204);
+    assert.equal((await a.send('delete', `/api/pockets/${p1.id}`)).status, 400);
+    const b = await client();
+    await b.send('post', '/api/auth/register', { name: 'Dos', email: 'dos@x.co', password: PASS });
+    const r = await b.send('post', '/api/transactions', { type: 'gasto', amount: 1, category: 'X', date: '2026-10-05', pocket_id: p1.id });
+    assert.equal(r.status, 404);
+  });
+
+  test('los movimientos de antes se reparten solos al estrenar bolsillos', async () => {
+    const c = await client();
+    await c.send('post', '/api/auth/register', { name: 'Vieja', email: 'antes@x.co', password: PASS });
+    const db = require('../src/db');
+    const uid = db.prepare("SELECT id FROM users WHERE email = 'antes@x.co'").get().id;
+    db.prepare("INSERT INTO transactions (user_id, type, amount, category, date) VALUES (?, 'ingreso', 900000, 'Ventas', '2026-10-01')").run(uid);
+    db.prepare("INSERT INTO transactions (user_id, type, amount, category, date) VALUES (?, 'ingreso', 1500000, 'Salario', '2026-10-01')").run(uid);
+    const s = (await c.agent.get('/api/summary?month=2026-10')).body;
+    const ps = Object.fromEntries(s.pockets.map((p) => [p.name, p.income]));
+    assert.deepEqual(ps, { Sostenimiento: 1500000, Ahorro: 900000 });
+  });
+});
+
 describe('Versión del frontend', () => {
   test('la página trae su versión y JS/CSS con esa versión en la URL', async () => {
     const r = await request(app).get('/');

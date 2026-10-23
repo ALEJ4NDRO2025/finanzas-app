@@ -30,7 +30,98 @@ const txBody = z.object({
   description: z.string().trim().max(140).default(''),
   date: day,
   goal_id: z.coerce.number().int().positive().optional(),
+  pocket_id: z.coerce.number().int().positive().optional(),
 }).strict();
+
+/* ---------- Bolsillos ---------- */
+// Cada usuario arranca con Sostenimiento y Ahorro. Sus movimientos sin bolsillo se reparten con las
+// mismas reglas que usa la app por defecto: salario y prima → Sostenimiento; otros ingresos → Ahorro;
+// gastos normales → Sostenimiento; lo que va a una meta → Ahorro.
+const MAX_POCKETS = 8;
+const SALARY = ['Salario', 'Prima'];
+const seeded = new Set();
+const listPockets = (userId) => db.prepare('SELECT id, name FROM pockets WHERE user_id = ? ORDER BY position, id').all(userId);
+
+function pocketRoles(pockets) {
+  const find = (n) => pockets.find((p) => p.name.toLowerCase() === n);
+  return { living: find('sostenimiento') ?? pockets[0], saving: find('ahorro') ?? pockets.at(-1) };
+}
+function defaultPocketId(t, pockets) {
+  const { living, saving } = pocketRoles(pockets);
+  if (t.type === 'ingreso') return (SALARY.includes(t.category) ? living : saving).id;
+  return (t.goal_id ? saving : living).id;
+}
+
+function ensurePockets(userId) {
+  if (seeded.has(userId)) return;
+  db.exec('BEGIN');
+  try {
+    if (!listPockets(userId).length) {
+      const ins = db.prepare('INSERT INTO pockets (user_id, name, position) VALUES (?, ?, ?)');
+      ins.run(userId, 'Sostenimiento', 0);
+      ins.run(userId, 'Ahorro', 1);
+    }
+    const pockets = listPockets(userId);
+    const orphans = db.prepare('SELECT id, type, category, goal_id FROM transactions WHERE user_id = ? AND pocket_id IS NULL').all(userId);
+    const upd = db.prepare('UPDATE transactions SET pocket_id = ? WHERE id = ? AND user_id = ?');
+    for (const t of orphans) upd.run(defaultPocketId(t, pockets), t.id, userId);
+    db.exec('COMMIT');
+    seeded.add(userId);
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+}
+router.use((req, res, next) => { ensurePockets(req.userId); next(); });
+
+function pocketFor(t, userId) {
+  if (t.pocket_id) { ownOr404('pockets', t.pocket_id, userId); return t.pocket_id; }
+  return defaultPocketId(t, listPockets(userId));
+}
+
+const pocketName = z.string().trim().min(1, 'Ponle un nombre').max(30).transform((n) => n.charAt(0).toUpperCase() + n.slice(1));
+// Comparación sin mayúsculas ni tildes de por medio ("INVERSIÓN" = "Inversión"); SQLite solo pliega ASCII.
+const fold = (n) => n.normalize('NFC').toLocaleLowerCase('es');
+const nameTaken = (userId, name, exceptId = 0) =>
+  listPockets(userId).some((p) => p.id !== exceptId && fold(p.name) === fold(name));
+
+router.get('/pockets', (req, res) => res.json({ pockets: listPockets(req.userId) }));
+
+router.post('/pockets', validate({ body: z.object({ name: pocketName }).strict() }), (req, res) => {
+  const pockets = listPockets(req.userId);
+  if (pockets.length >= MAX_POCKETS) throw new ApiError(400, `Puedes tener hasta ${MAX_POCKETS} bolsillos`);
+  if (nameTaken(req.userId, req.valid.body.name)) throw new ApiError(409, 'Ya tienes un bolsillo con ese nombre');
+  const { lastInsertRowid } = db.prepare('INSERT INTO pockets (user_id, name, position) VALUES (?, ?, ?)')
+    .run(req.userId, req.valid.body.name, pockets.length);
+  res.status(201).json({ pocket: { id: Number(lastInsertRowid), name: req.valid.body.name } });
+});
+
+router.patch('/pockets/:id', validate({ ...idParam, body: z.object({ name: pocketName }).strict() }), (req, res) => {
+  ownOr404('pockets', req.valid.params.id, req.userId);
+  if (nameTaken(req.userId, req.valid.body.name, req.valid.params.id)) throw new ApiError(409, 'Ya tienes un bolsillo con ese nombre');
+  db.prepare('UPDATE pockets SET name = ? WHERE id = ? AND user_id = ?').run(req.valid.body.name, req.valid.params.id, req.userId);
+  res.json({ pocket: { id: req.valid.params.id, name: req.valid.body.name } });
+});
+
+// Borrar un bolsillo: sus movimientos pasan al bolsillo que elijas (move_to). Siempre queda al menos uno.
+router.delete('/pockets/:id', validate({
+  ...idParam, query: z.object({ move_to: z.coerce.number().int().positive().optional() }).strict(),
+}), (req, res) => {
+  const { id } = req.valid.params;
+  ownOr404('pockets', id, req.userId);
+  if (listPockets(req.userId).length <= 1) throw new ApiError(400, 'Necesitas al menos un bolsillo');
+  const used = db.prepare('SELECT COUNT(*) AS n FROM transactions WHERE pocket_id = ? AND user_id = ?').get(id, req.userId).n;
+  const moveTo = req.valid.query.move_to;
+  if (used && !moveTo) throw new ApiError(409, 'Ese bolsillo tiene movimientos: elige a qué bolsillo pasarlos');
+  if (moveTo) {
+    if (moveTo === id) throw new ApiError(400, 'Elige otro bolsillo');
+    ownOr404('pockets', moveTo, req.userId);
+  }
+  db.exec('BEGIN');
+  try {
+    if (used) db.prepare('UPDATE transactions SET pocket_id = ? WHERE pocket_id = ? AND user_id = ?').run(moveTo, id, req.userId);
+    db.prepare('DELETE FROM pockets WHERE id = ? AND user_id = ?').run(id, req.userId);
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  res.status(204).end();
+});
 
 // Lo ahorrado en una meta = aportes manuales + gastos registrados con esa meta como categoría.
 // Se calcula siempre, así borrar o editar un movimiento ajusta la meta solo.
@@ -54,23 +145,25 @@ router.get('/transactions', validate({
 }), (req, res) => {
   const { month: m = currentMonth(), type } = req.valid.query;
   const rows = type
-    ? db.prepare('SELECT id, type, amount, category, description, date, goal_id FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? AND type = ? ORDER BY date DESC, id DESC').all(req.userId, m, type)
-    : db.prepare('SELECT id, type, amount, category, description, date, goal_id FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? ORDER BY date DESC, id DESC').all(req.userId, m);
+    ? db.prepare('SELECT id, type, amount, category, description, date, goal_id, pocket_id FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? AND type = ? ORDER BY date DESC, id DESC').all(req.userId, m, type)
+    : db.prepare('SELECT id, type, amount, category, description, date, goal_id, pocket_id FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? ORDER BY date DESC, id DESC').all(req.userId, m);
   res.json({ transactions: rows });
 });
 
 router.post('/transactions', validate({ body: txBody }), (req, res) => {
   const t = linkGoal(req.valid.body, req.userId);
-  const { lastInsertRowid } = db.prepare('INSERT INTO transactions (user_id, type, amount, category, description, date, goal_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(req.userId, t.type, t.amount, t.category, t.description, t.date, t.goal_id);
+  t.pocket_id = pocketFor(t, req.userId);
+  const { lastInsertRowid } = db.prepare('INSERT INTO transactions (user_id, type, amount, category, description, date, goal_id, pocket_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(req.userId, t.type, t.amount, t.category, t.description, t.date, t.goal_id, t.pocket_id);
   res.status(201).json({ transaction: { id: Number(lastInsertRowid), ...t }, goal: t.goal_id ? goalProgress(t.goal_id, req.userId) : undefined });
 });
 
 router.put('/transactions/:id', validate({ ...idParam, body: txBody }), (req, res) => {
   ownOr404('transactions', req.valid.params.id, req.userId);
   const t = linkGoal(req.valid.body, req.userId);
-  db.prepare('UPDATE transactions SET type = ?, amount = ?, category = ?, description = ?, date = ?, goal_id = ? WHERE id = ? AND user_id = ?')
-    .run(t.type, t.amount, t.category, t.description, t.date, t.goal_id, req.valid.params.id, req.userId);
+  t.pocket_id = pocketFor(t, req.userId);
+  db.prepare('UPDATE transactions SET type = ?, amount = ?, category = ?, description = ?, date = ?, goal_id = ?, pocket_id = ? WHERE id = ? AND user_id = ?')
+    .run(t.type, t.amount, t.category, t.description, t.date, t.goal_id, t.pocket_id, req.valid.params.id, req.userId);
   res.json({ transaction: { id: req.valid.params.id, ...t } });
 });
 
@@ -85,7 +178,7 @@ router.get('/budgets', validate({ query: z.object({ month: month.optional() }).s
   const m = req.valid.query.month ?? currentMonth();
   const rows = db.prepare(`
     SELECT b.id, b.category, b.month, b.limit_amount,
-      COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.user_id = b.user_id AND t.type = 'gasto'
+      COALESCE((SELECT SUM(amount) FROM transactions t WHERE t.user_id = b.user_id AND t.type = 'gasto' AND t.goal_id IS NULL
         AND t.category = b.category AND substr(t.date,1,7) = b.month), 0) AS spent
     FROM budgets b WHERE b.user_id = ? AND b.month = ? ORDER BY b.category`).all(req.userId, m);
   res.json({ budgets: rows });
@@ -146,14 +239,24 @@ router.delete('/goals/:id', validate(idParam), (req, res) => {
 });
 
 /* ---------- Resumen para el dashboard ---------- */
+// Lo que se manda a una meta no es un gasto: es plata que se guarda. Se cuenta aparte como "ahorrado".
+const FLOWS = `COALESCE(SUM(CASE WHEN type = 'ingreso' THEN amount END), 0) AS income,
+      COALESCE(SUM(CASE WHEN type = 'gasto' AND goal_id IS NULL THEN amount END), 0) AS expense,
+      COALESCE(SUM(CASE WHEN type = 'gasto' AND goal_id IS NOT NULL THEN amount END), 0) AS saved`;
+
 router.get('/summary', validate({ query: z.object({ month: month.optional() }).strict() }), (req, res) => {
   const m = req.valid.query.month ?? currentMonth();
-  const totals = db.prepare(`SELECT
-      COALESCE(SUM(CASE WHEN type='ingreso' THEN amount END),0) AS income,
-      COALESCE(SUM(CASE WHEN type='gasto' THEN amount END),0) AS expense
-    FROM transactions WHERE user_id = ? AND substr(date,1,7) = ?`).get(req.userId, m);
+  const totals = db.prepare(`SELECT ${FLOWS} FROM transactions WHERE user_id = ? AND substr(date,1,7) = ?`).get(req.userId, m);
   const byCategory = db.prepare(`SELECT category, SUM(amount) AS total FROM transactions
-    WHERE user_id = ? AND type = 'gasto' AND substr(date,1,7) = ? GROUP BY category ORDER BY total DESC`).all(req.userId, m);
+    WHERE user_id = ? AND type = 'gasto' AND goal_id IS NULL AND substr(date,1,7) = ? GROUP BY category ORDER BY total DESC`).all(req.userId, m);
+
+  // Cada bolsillo: lo que entró, lo que se gastó, lo que se mandó a metas y lo que queda este mes.
+  const flowsByPocket = db.prepare(`SELECT pocket_id, ${FLOWS} FROM transactions
+    WHERE user_id = ? AND substr(date,1,7) = ? GROUP BY pocket_id`).all(req.userId, m);
+  const pockets = listPockets(req.userId).map((p) => {
+    const f = flowsByPocket.find((r) => r.pocket_id === p.id) ?? { income: 0, expense: 0, saved: 0 };
+    return { id: p.id, name: p.name, income: f.income, expense: f.expense, saved: f.saved, left: f.income - f.expense - f.saved };
+  });
 
   // Últimos 6 meses terminando en el mes elegido.
   const [y, mo] = m.split('-').map(Number);
@@ -161,14 +264,15 @@ router.get('/summary', validate({ query: z.object({ month: month.optional() }).s
     const d = new Date(Date.UTC(y, mo - 6 + i, 1));
     return d.toISOString().slice(0, 7);
   });
-  const trendRows = db.prepare(`SELECT substr(date,1,7) AS month,
-      COALESCE(SUM(CASE WHEN type='ingreso' THEN amount END),0) AS income,
-      COALESCE(SUM(CASE WHEN type='gasto' THEN amount END),0) AS expense
+  const trendRows = db.prepare(`SELECT substr(date,1,7) AS month, ${FLOWS}
     FROM transactions WHERE user_id = ? AND substr(date,1,7) BETWEEN ? AND ? GROUP BY 1`).all(req.userId, months[0], months[5]);
-  const trend = months.map((mm) => trendRows.find((r) => r.month === mm) ?? { month: mm, income: 0, expense: 0 })
-    .map((r) => ({ month: r.month, income: r.income, expense: r.expense }));
+  const trend = months.map((mm) => trendRows.find((r) => r.month === mm) ?? { month: mm, income: 0, expense: 0, saved: 0 })
+    .map((r) => ({ month: r.month, income: r.income, expense: r.expense, saved: r.saved }));
 
-  res.json({ month: m, income: totals.income, expense: totals.expense, balance: totals.income - totals.expense, byCategory, trend });
+  res.json({
+    month: m, income: totals.income, expense: totals.expense, saved: totals.saved,
+    balance: totals.income - totals.expense - totals.saved, byCategory, pockets, trend,
+  });
 });
 
 module.exports = router;

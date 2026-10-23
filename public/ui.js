@@ -93,8 +93,20 @@ const FinanzasUI = (() => {
     close.focus();
   }
 
+  // Bolsillo sugerido: salario y prima → Sostenimiento; otros ingresos → Ahorro;
+  // gastos → Sostenimiento; lo que va a una meta → Ahorro. (Las mismas reglas que usa el servidor.)
+  const SALARY = ['Salario', 'Prima'];
+  function defaultPocket(pockets, type, category, toGoal) {
+    if (!pockets.length) return null;
+    const find = (n) => pockets.find((p) => p.name.toLowerCase() === n);
+    const living = find('sostenimiento') ?? pockets[0];
+    const saving = find('ahorro') ?? pockets.at(-1);
+    if (type === 'ingreso') return (SALARY.includes(category) ? living : saving).id;
+    return (toGoal ? saving : living).id;
+  }
+
   function mount(root, store, opts = {}) {
-    const state = { month: thisMonth(), tab: 'resumen', txType: 'gasto', customs: { gasto: new Set(), ingreso: new Set() }, goals: [] };
+    const state = { month: thisMonth(), tab: 'resumen', txType: 'gasto', customs: { gasto: new Set(), ingreso: new Set() }, goals: [], pockets: [], editPockets: false };
     const learnCustoms = (txs) => txs.forEach((t) => { if (!CATS[t.type].includes(t.category)) state.customs[t.type].add(t.category); });
     let busy = false;
 
@@ -143,6 +155,15 @@ const FinanzasUI = (() => {
         : null;
       const cat = h('select', { id: 'tx-cat' }, CATS[state.txType].map((c) => h('option', {}, c)), goalOpts);
       const date = h('input', { id: 'tx-date', type: 'date', value: state.month === thisMonth() ? today() : `${state.month}-01`, required: true });
+      // Bolsillo: se sugiere según el tipo y la categoría hasta que lo cambies a mano.
+      const pocket = h('select', { id: 'tx-pocket' }, state.pockets.map((p) => h('option', { value: String(p.id) }, p.name)));
+      let pocketTouched = false;
+      const suggestPocket = () => {
+        if (pocketTouched) return;
+        const id = defaultPocket(state.pockets, state.txType, cat.value, cat.value.startsWith('goal:'));
+        if (id) pocket.value = String(id);
+      };
+      pocket.addEventListener('change', () => { pocketTouched = true; });
       const desc = h('input', { id: 'tx-desc', maxlength: '140', placeholder: 'Opcional' });
       // "Otros" pide escribir qué fue; lo que escribas queda como categoría propia y se sugiere la próxima vez.
       const isGasto = state.txType === 'gasto';
@@ -153,7 +174,9 @@ const FinanzasUI = (() => {
         const on = cat.value === 'Otros';
         otherField.hidden = !on; other.required = on;
         if (on) other.focus(); else other.value = '';
+        suggestPocket();
       });
+      suggestPocket();
       const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Tipo' },
         ['gasto', 'ingreso'].map((t) => h('button', {
           type: 'button', class: t, 'aria-pressed': String(state.txType === t),
@@ -167,7 +190,7 @@ const FinanzasUI = (() => {
           if (cat.value.startsWith('goal:')) {
             const goal = state.goals.find((g) => `goal:${g.id}` === cat.value);
             act(async () => {
-              const r = await store.addTx({ type: 'gasto', amount: value, category: goal.name, goal_id: goal.id, description: desc.value.trim(), date: date.value });
+              const r = await store.addTx({ type: 'gasto', amount: value, category: goal.name, goal_id: goal.id, description: desc.value.trim(), date: date.value, ...(pocket.value && { pocket_id: pocket.value }) });
               if (r?.goal) goalReport(r.goal, value);
             });
             return;
@@ -175,7 +198,7 @@ const FinanzasUI = (() => {
           const category = cat.value === 'Otros' ? other.value.trim().replace(/\s+/g, ' ') : cat.value;
           if (!category) { err.textContent = isGasto ? 'Escribe en qué gastaste.' : 'Escribe de dónde vino.'; err.hidden = false; other.focus(); return; }
           const label = category.charAt(0).toUpperCase() + category.slice(1);
-          act(() => store.addTx({ type: state.txType, amount: value, category: label, description: desc.value.trim(), date: date.value }),
+          act(() => store.addTx({ type: state.txType, amount: value, category: label, description: desc.value.trim(), date: date.value, ...(pocket.value && { pocket_id: pocket.value }) }),
             state.txType === 'gasto' ? 'Gasto registrado' : 'Ingreso registrado');
         },
       },
@@ -183,6 +206,7 @@ const FinanzasUI = (() => {
         h('div', { class: 'field' }, h('label', { for: 'tx-amount' }, 'Valor (COP)'), amount),
         h('div', { class: 'field' }, h('label', { for: 'tx-cat' }, 'Categoría'), cat),
         otherField,
+        state.pockets.length ? h('div', { class: 'field' }, h('label', { for: 'tx-pocket' }, state.txType === 'ingreso' ? 'Va al bolsillo' : 'Sale del bolsillo'), pocket) : null,
         h('div', { class: 'field' }, h('label', { for: 'tx-date' }, 'Fecha'), date),
         h('div', { class: 'field' }, h('label', { for: 'tx-desc' }, 'Nota'), desc),
         h('button', { class: 'btn-primary', type: 'submit' }, 'Registrar'),
@@ -223,26 +247,83 @@ const FinanzasUI = (() => {
     function balanceCard(s) {
       const rings = svg('svg', { viewBox: '0 0 300 300', class: 'rings', 'aria-hidden': 'true' });
       [140, 110, 80, 50].forEach((r) => rings.append(svg('circle', { cx: 150, cy: 150, r })));
-      const pct = s.income ? Math.round((s.balance / s.income) * 100) : null;
-      const [int] = [Math.abs(Math.round(s.balance)).toLocaleString('es-CO')];
-      return h('section', { class: `balance-card${s.balance < 0 ? ' negative' : ''}`, 'aria-label': 'Balance del mes' }, rings,
-        h('div', { class: 'card-top' }, h('span', {}, `Balance de ${monthName(state.month).split(' ')[0].toLowerCase()}`), h('span', {}, 'COP')),
+      // "Ahorras" = lo que no se gastó (incluye lo enviado a metas), sobre lo que entró.
+      const pct = s.income ? Math.round(((s.income - s.expense) / s.income) * 100) : null;
+      const int = Math.abs(Math.round(s.balance)).toLocaleString('es-CO');
+      return h('section', { class: `balance-card${s.balance < 0 ? ' negative' : ''}`, 'aria-label': 'Disponible del mes' }, rings,
+        h('div', { class: 'card-top' }, h('span', {}, `Disponible en ${monthName(state.month).split(' ')[0].toLowerCase()}`), h('span', {}, 'COP')),
         h('div', {},
           h('div', { class: 'big num' }, s.balance < 0 ? '−' : null, h('span', { class: 'cur' }, '$'), int),
-          h('div', { class: 'sub' }, pct === null ? 'Registra tu primer ingreso para ver cuánto ahorras' : pct >= 0 ? `Ahorras el ${pct}% de lo que entra` : 'Este mes gastaste más de lo que entró')),
-        h('div', { class: 'flows' },
+          h('div', { class: 'sub' }, pct === null ? 'Registra tu primer ingreso para ver cuánto ahorras'
+            : s.balance < 0 ? 'Este mes salió más de lo que entró' : `Ahorras el ${Math.max(0, pct)}% de lo que entra`)),
+        h('div', { class: `flows${s.saved ? ' three' : ''}` },
           h('div', { class: 'flow' }, h('span', {}, '↓ Entró'), h('span', { class: 'v num' }, cop(s.income))),
-          h('div', { class: 'flow' }, h('span', {}, '↑ Salió'), h('span', { class: 'v num' }, cop(s.expense))))); 
+          h('div', { class: 'flow' }, h('span', {}, '↑ Gastaste'), h('span', { class: 'v num' }, cop(s.expense))),
+          s.saved ? h('div', { class: 'flow' }, h('span', {}, '★ A metas'), h('span', { class: 'v num' }, cop(s.saved))) : null));
+    }
+
+    /* ---------- Bolsillos ---------- */
+    function pocketCard(p) {
+      const out = p.expense + p.saved;
+      const pct = p.income ? Math.min(100, (out / p.income) * 100) : (out ? 100 : 0);
+      const over = p.left < 0;
+      return h('article', { class: `pocket${over ? ' over' : ''}` },
+        h('div', { class: 'pocket-head' }, h('h3', {}, p.name), h('span', { class: 'pocket-tag' }, over ? 'Te pasaste' : 'Te quedan')),
+        h('div', { class: 'pocket-left num' }, (over ? '−' : '') + cop(Math.abs(p.left))),
+        h('div', { class: `meter ${over ? 'over' : pct >= 80 ? 'warn' : ''}`, role: 'img', 'aria-label': `Usado ${Math.round(pct)}% de lo que entró` }, h('span', { style: `width:${pct}%` })),
+        h('dl', { class: 'pocket-flows' },
+          h('div', {}, h('dt', {}, 'Entró'), h('dd', { class: 'num' }, cop(p.income))),
+          h('div', {}, h('dt', {}, 'Gastaste'), h('dd', { class: 'num' }, cop(p.expense))),
+          p.saved ? h('div', {}, h('dt', {}, 'A metas'), h('dd', { class: 'num' }, cop(p.saved))) : null));
+    }
+
+    function pocketEditor(pockets) {
+      const rows = pockets.map((p) => {
+        const name = h('input', { id: `pk-${p.id}`, value: p.name, maxlength: '30', 'aria-label': `Nombre de ${p.name}` });
+        const actions = h('div', { class: 'pk-actions' });
+        // Al borrar, sus movimientos pasan a otro bolsillo que eliges ahí mismo.
+        const ask = () => {
+          const others = pockets.filter((o) => o.id !== p.id);
+          const dest = h('select', { id: `pk-move-${p.id}`, 'aria-label': 'Pasar sus movimientos a' }, others.map((o) => h('option', { value: String(o.id) }, o.name)));
+          actions.replaceChildren(h('span', { class: 'pk-ask' }, 'Sus movimientos pasan a:'), dest,
+            h('button', { type: 'button', class: 'btn-ghost', onclick: idle }, 'Cancelar'),
+            h('button', { type: 'button', class: 'btn-danger', onclick: () => act(() => store.deletePocket(p.id, dest.value), 'Bolsillo borrado') }, 'Sí, borrar'));
+        };
+        const idle = () => actions.replaceChildren(
+          h('button', { type: 'button', onclick: () => {
+            const v = name.value.trim(); if (!v || v === p.name) return;
+            act(() => store.renamePocket(p.id, v), 'Bolsillo renombrado');
+          } }, 'Guardar'),
+          pockets.length > 1 ? h('button', { type: 'button', class: 'btn-danger', onclick: ask }, 'Borrar') : null);
+        idle();
+        return h('div', { class: 'pk-row' }, name, actions);
+      });
+      const fresh = h('input', { id: 'pk-new', maxlength: '30', placeholder: 'Ej: Inversión, Viajes, Emergencias', 'aria-label': 'Nombre del bolsillo nuevo' });
+      return h('div', { class: 'pk-editor' }, rows,
+        pockets.length < 8 ? h('form', { class: 'pk-row', onsubmit: (e) => {
+          e.preventDefault(); const v = fresh.value.trim(); if (!v) return fresh.focus();
+          act(() => store.addPocket(v), 'Bolsillo creado');
+        } }, fresh, h('div', { class: 'pk-actions' }, h('button', { type: 'submit', class: 'btn-primary' }, 'Crear bolsillo'))) : null);
+    }
+
+    function pocketsSection(pockets) {
+      const toggle = h('button', { class: 'btn-ghost', 'aria-expanded': String(state.editPockets), onclick: () => { state.editPockets = !state.editPockets; render(); } },
+        state.editPockets ? 'Listo' : 'Editar');
+      return h('section', { class: 'panel', 'aria-label': 'Tus bolsillos' },
+        h('div', { class: 'panel-head' }, h('h2', {}, 'Tus bolsillos'), toggle),
+        state.editPockets ? pocketEditor(pockets) : h('div', { class: 'pockets' }, pockets.map(pocketCard)));
     }
 
     /* ---------- Vistas ---------- */
     async function viewResumen() {
       const [s, budgets, goals] = await Promise.all([store.summary(state.month), store.listBudgets(state.month), store.listGoals()]);
       state.goals = goals;
+      state.pockets = s.pockets || [];
       const alerts = budgets.filter((b) => b.spent / b.limit_amount >= 0.8);
       s.byCategory.forEach((c) => { if (!CATS.gasto.includes(c.category)) state.customs.gasto.add(c.category); });
       return [
         balanceCard(s),
+        state.pockets.length ? pocketsSection(state.pockets) : null,
         h('section', { class: 'panel', 'aria-label': 'Registrar movimiento' }, h('h2', {}, 'Registrar movimiento'), txForm()),
         alerts.length ? h('section', { class: 'panel' }, h('h2', {}, 'Ojo con estos presupuestos'),
           h('div', { class: 'badge-row' }, alerts.map((b) => h('span', { class: `chip ${b.spent > b.limit_amount ? 'over' : 'warn'}` },
@@ -275,6 +356,8 @@ const FinanzasUI = (() => {
         h('dl', {},
           h('div', {}, h('dt', {}, 'Fecha'), h('dd', {}, fecha.charAt(0).toUpperCase() + fecha.slice(1))),
           h('div', {}, h('dt', {}, t.goal_id ? 'Meta' : 'Categoría'), h('dd', {}, t.goal_id ? `${t.category} (se suma a la meta)` : t.category)),
+          state.pockets.find((p) => String(p.id) === String(t.pocket_id))
+            ? h('div', {}, h('dt', {}, 'Bolsillo'), h('dd', {}, state.pockets.find((p) => String(p.id) === String(t.pocket_id)).name)) : null,
           t.description ? h('div', {}, h('dt', {}, 'Nota'), h('dd', {}, t.description)) : null),
         actions);
       const row = h('button', {
@@ -306,8 +389,9 @@ const FinanzasUI = (() => {
     }
 
     async function viewMovimientos() {
-      const [txs, goals] = await Promise.all([store.listTx(state.month), store.listGoals()]);
+      const [txs, goals, pockets] = await Promise.all([store.listTx(state.month), store.listGoals(), store.listPockets()]);
       state.goals = goals;
+      state.pockets = pockets;
       learnCustoms(txs);
       const days = [];
       for (const t of txs) {
@@ -461,6 +545,7 @@ const FinanzasUI = (() => {
         h('section', { class: 'balance-card sk-card' }, h('div', { class: 'card-top' }, sk('sk-line', 'width:9em'), sk('sk-line', 'width:2.5em')),
           h('div', { class: 'sk-stack' }, sk('sk-big'), sk('sk-line', 'width:14em')),
           h('div', { class: 'flows' }, sk('sk-flow'), sk('sk-flow'))),
+        skPanel(h('div', { class: 'pockets' }, [0, 1].map(() => h('div', { class: 'pocket' }, sk('sk-line', 'width:7em'), sk('sk-line', 'width:9em;height:1.5em'), sk('sk-meter'), sk('sk-line', 'width:80%'))))),
         skPanel(skForm(5, true)),
         h('div', { class: 'grid2' }, skPanel(sk('sk-chart')), skPanel(...['70%', '55%', '40%'].map((w) => h('div', { class: 'item' }, h('div', { class: 'item-head' }, sk('sk-line', `width:${w}`), sk('sk-line', 'width:6em')), sk('sk-meter'))))),
       ],

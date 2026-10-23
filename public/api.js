@@ -42,7 +42,7 @@ const Api = (() => {
   const store = {
     summary: (m) => call('GET', `/api/summary?month=${m}`),
     listTx: async (m) => (await call('GET', `/api/transactions?month=${m}`)).transactions,
-    addTx: (t) => call('POST', '/api/transactions', t),
+    addTx: (t) => call('POST', '/api/transactions', t.pocket_id ? { ...t, pocket_id: Number(t.pocket_id) } : t),
     deleteTx: (id) => call('DELETE', `/api/transactions/${id}`),
     listBudgets: async (m) => (await call('GET', `/api/budgets?month=${m}`)).budgets,
     setBudget: (b) => call('PUT', '/api/budgets', b),
@@ -51,6 +51,10 @@ const Api = (() => {
     addGoal: (g) => call('POST', '/api/goals', g),
     contribute: (id, amount) => call('POST', `/api/goals/${id}/contributions`, { amount }),
     deleteGoal: (id) => call('DELETE', `/api/goals/${id}`),
+    listPockets: async () => (await call('GET', '/api/pockets')).pockets,
+    addPocket: (name) => call('POST', '/api/pockets', { name }),
+    renamePocket: (id, name) => call('PATCH', `/api/pockets/${id}`, { name }),
+    deletePocket: (id, moveTo) => call('DELETE', `/api/pockets/${id}${moveTo ? `?move_to=${moveTo}` : ''}`),
   };
 
   return { call, store };

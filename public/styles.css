@@ -333,3 +333,29 @@ input#tx-amount, input#bud-amount, input#goal-target { font-size: 1.15rem; font-
 @media (prefers-reduced-motion: no-preference) {
   .report { animation: rise .35s cubic-bezier(.2,.8,.2,1) both; }
 }
+
+/* ---------- Bolsillos ---------- */
+.flows.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.flows.three .flow .v { font-size: 1.05rem; }
+@media (max-width: 420px) { .flows.three { grid-template-columns: 1fr 1fr; } .flows.three .flow:last-child { grid-column: 1 / -1; } }
+.pockets { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.pocket { background: var(--surface-2); border-radius: 18px; padding: 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.pocket-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.pocket-head h3 { font-size: 1rem; font-weight: 800; overflow-wrap: anywhere; }
+.pocket-tag { font-size: 0.8rem; color: var(--muted); font-weight: 700; white-space: nowrap; }
+.pocket-left { font-size: 1.6rem; font-weight: 900; letter-spacing: -0.02em; line-height: 1.1; }
+.pocket.over .pocket-left, .pocket.over .pocket-tag { color: var(--expense); }
+.pocket .meter { background: var(--surface); }
+.pocket-flows { margin: 0; display: grid; gap: 4px; }
+.pocket-flows > div { display: flex; justify-content: space-between; gap: 8px; font-size: 0.88rem; }
+.pocket-flows dt { color: var(--muted); font-weight: 600; }
+.pocket-flows dd { margin: 0; font-weight: 700; }
+.pk-editor { display: grid; gap: 10px; }
+.pk-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.pk-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+.pk-actions select { width: auto; min-width: 9em; }
+.pk-ask { font-weight: 700; font-size: 0.88rem; }
+@media (max-width: 600px) {
+  .pk-row { grid-template-columns: 1fr; }
+  form.quick .field:has(#tx-pocket) { grid-column: 1 / -1; }
+}

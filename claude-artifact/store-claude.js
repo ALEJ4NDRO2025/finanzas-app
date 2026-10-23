@@ -24,6 +24,8 @@
   await loaded;
 
   const pad = (n) => String(n).padStart(2, '0');
+  // Id único para documentos nuevos (randomUUID solo existe en https; respaldo con getRandomValues).
+  const newId = () => crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
   const slug = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const ofKind = (k) => docs.filter((d) => d.kind === k);
   const check = (cond, msg) => { if (!cond) throw new Error(msg); };
@@ -31,27 +33,50 @@
   const okDay = (s) => /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s);
   const okMonth = (s) => /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
   const txOf = (m) => ofKind('tx').filter((t) => t.date.slice(0, 7) === m);
+  // Bolsillos: arrancan con Sostenimiento y Ahorro (ids fijos, así dos pestañas no los duplican).
+  // Los movimientos sin bolsillo se reparten al leer, con las mismas reglas del servidor.
+  const SALARY = ['Salario', 'Prima'];
+  const fold = (n) => n.normalize('NFC').toLocaleLowerCase('es');
+  const pocketsList = () => ofKind('pocket').sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map((p) => ({ id: p._id, name: p.name }));
+  const defaultPocketId = (t, pockets) => {
+    const find = (n) => pockets.find((p) => fold(p.name) === n);
+    const living = find('sostenimiento') ?? pockets[0];
+    const saving = find('ahorro') ?? pockets.at(-1);
+    if (t.type === 'ingreso') return (SALARY.includes(t.category) ? living : saving).id;
+    return (t.goal_id ? saving : living).id;
+  };
+  const pocketOf = (t, pockets = pocketsList()) => (pockets.some((p) => p.id === t.pocket_id) ? t.pocket_id : defaultPocketId(t, pockets));
+  const FLOWS = (txs) => ({
+    income: txs.filter((t) => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0),
+    expense: txs.filter((t) => t.type === 'gasto' && !t.goal_id).reduce((a, t) => a + t.amount, 0),
+    saved: txs.filter((t) => t.type === 'gasto' && t.goal_id).reduce((a, t) => a + t.amount, 0),
+  });
+
   const writeFail = (e) => { throw new Error(e?.code === 'quota_exceeded' ? 'Se llenó el espacio de datos. Borra movimientos viejos.' : 'No se pudo guardar. Intenta de nuevo.'); };
 
   const store = {
     onChange: (fn) => listeners.add(fn),
     async summary(m) {
       const txs = txOf(m);
-      const income = txs.filter((t) => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0);
-      const expense = txs.filter((t) => t.type === 'gasto').reduce((a, t) => a + t.amount, 0);
+      const { income, expense, saved } = FLOWS(txs);
       const cats = {};
-      txs.filter((t) => t.type === 'gasto').forEach((t) => { cats[t.category] = (cats[t.category] || 0) + t.amount; });
+      txs.filter((t) => t.type === 'gasto' && !t.goal_id).forEach((t) => { cats[t.category] = (cats[t.category] || 0) + t.amount; });
       const byCategory = Object.entries(cats).map(([category, total]) => ({ category, total })).sort((a, b) => b.total - a.total);
+      const list = pocketsList();
+      const pockets = list.map((p) => {
+        const f = FLOWS(txs.filter((t) => pocketOf(t, list) === p.id));
+        return { id: p.id, name: p.name, ...f, left: f.income - f.expense - f.saved };
+      });
       const [y, mo] = m.split('-').map(Number);
       const trend = Array.from({ length: 6 }, (_, i) => {
         const d = new Date(y, mo - 6 + i, 1); const mm = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-        const t = txOf(mm);
-        return { month: mm, income: t.filter((x) => x.type === 'ingreso').reduce((a, x) => a + x.amount, 0), expense: t.filter((x) => x.type === 'gasto').reduce((a, x) => a + x.amount, 0) };
+        return { month: mm, ...FLOWS(txOf(mm)) };
       });
-      return { month: m, income, expense, balance: income - expense, byCategory, trend };
+      return { month: m, income, expense, saved, balance: income - expense - saved, byCategory, pockets, trend };
     },
     async listTx(m) {
-      return txOf(m).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)).map((t) => ({ ...t, id: t._id }));
+      const list = pocketsList();
+      return txOf(m).sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0)).map((t) => ({ ...t, id: t._id, pocket_id: pocketOf(t, list) }));
     },
     async addTx(t) {
       check(['ingreso', 'gasto'].includes(t.type) && okMoney(t.amount) && okDay(t.date) && t.category, 'Revisa el valor y la fecha');
@@ -63,9 +88,13 @@
         check(goal, 'Meta no encontrada');
         category = goal.name; goalId = goal._id;
       }
+      const list = pocketsList();
+      let pocketId = t.pocket_id || null;
+      if (pocketId) check(list.some((p) => p.id === pocketId), 'Bolsillo no encontrado');
+      else pocketId = defaultPocketId({ ...t, goal_id: goalId }, list);
       // Progreso calculado antes de guardar: el snapshot puede tardar en traer el gasto nuevo.
       const before = goalId ? this.goalProgress(goalId) : null;
-      await col.doc('tx-' + crypto.randomUUID()).set({ kind: 'tx', type: t.type, amount: t.amount, category, date: t.date, goal_id: goalId, description: String(t.description || '').slice(0, 140), createdAt: Date.now() }).catch(writeFail);
+      await col.doc('tx-' + newId()).set({ kind: 'tx', type: t.type, amount: t.amount, category, date: t.date, goal_id: goalId, pocket_id: pocketId, description: String(t.description || '').slice(0, 140), createdAt: Date.now() }).catch(writeFail);
       return before ? { goal: { ...before, saved: before.saved + t.amount, from_tx: before.from_tx + t.amount, tx_count: before.tx_count + 1 } } : {};
     },
     // Lo ahorrado = aportes manuales + gastos enlazados (calculado, así borrar un movimiento ajusta la meta).
@@ -76,9 +105,34 @@
       return { id, name: g.name, target: g.target, deadline: g.deadline, saved: g.saved + fromTx, from_tx: fromTx, tx_count: linked.length };
     },
     deleteTx: (id) => col.doc(id).delete().catch(writeFail),
+    async listPockets() { return pocketsList(); },
+    async addPocket(name) {
+      const n = String(name).trim().slice(0, 30); check(n, 'Ponle un nombre');
+      const label = n.charAt(0).toUpperCase() + n.slice(1);
+      const list = pocketsList();
+      check(list.length < 8, 'Puedes tener hasta 8 bolsillos');
+      check(!list.some((p) => fold(p.name) === fold(label)), 'Ya tienes un bolsillo con ese nombre');
+      await col.doc('pk-' + newId()).set({ kind: 'pocket', name: label, position: list.length }).catch(writeFail);
+    },
+    async renamePocket(id, name) {
+      const n = String(name).trim().slice(0, 30); check(n, 'Ponle un nombre');
+      const label = n.charAt(0).toUpperCase() + n.slice(1);
+      check(!pocketsList().some((p) => p.id !== id && fold(p.name) === fold(label)), 'Ya tienes un bolsillo con ese nombre');
+      await col.doc(id).update({ name: label }).catch(writeFail);
+    },
+    // Sus movimientos pasan al bolsillo elegido (uno por uno: la base no tiene escrituras en lote).
+    async deletePocket(id, moveTo) {
+      const list = pocketsList();
+      check(list.length > 1, 'Necesitas al menos un bolsillo');
+      check(moveTo && moveTo !== id && list.some((p) => p.id === moveTo), 'Elige a qué bolsillo pasar sus movimientos');
+      for (const t of ofKind('tx').filter((x) => pocketOf(x, list) === id)) {
+        await col.doc(t._id).update({ pocket_id: moveTo }).catch(writeFail);
+      }
+      await col.doc(id).delete().catch(writeFail);
+    },
     async listBudgets(m) {
       const spent = {};
-      txOf(m).filter((t) => t.type === 'gasto').forEach((t) => { spent[t.category] = (spent[t.category] || 0) + t.amount; });
+      txOf(m).filter((t) => t.type === 'gasto' && !t.goal_id).forEach((t) => { spent[t.category] = (spent[t.category] || 0) + t.amount; });
       return ofKind('budget').filter((b) => b.month === m).sort((a, b) => a.category.localeCompare(b.category))
         .map((b) => ({ id: b._id, category: b.category, month: b.month, limit_amount: b.limit_amount, spent: spent[b.category] || 0 }));
     },
@@ -92,7 +146,7 @@
     },
     async addGoal(g) {
       check(g.name && okMoney(g.target) && (!g.deadline || okDay(g.deadline)), 'Revisa el nombre y el valor');
-      await col.doc('goal-' + crypto.randomUUID()).set({ kind: 'goal', name: g.name.slice(0, 60), target: g.target, saved: 0, deadline: g.deadline || null, createdAt: Date.now() }).catch(writeFail);
+      await col.doc('goal-' + newId()).set({ kind: 'goal', name: g.name.slice(0, 60), target: g.target, saved: 0, deadline: g.deadline || null, createdAt: Date.now() }).catch(writeFail);
     },
     async contribute(id, amount) {
       const g = docs.find((d) => d._id === id);
@@ -106,6 +160,11 @@
     },
     deleteGoal: (id) => col.doc(id).delete().catch(writeFail),
   };
+
+  if (!ofKind('pocket').length) {
+    await col.doc('pk-sostenimiento').set({ kind: 'pocket', name: 'Sostenimiento', position: 0 }).catch(() => {});
+    await col.doc('pk-ahorro').set({ kind: 'pocket', name: 'Ahorro', position: 1 }).catch(() => {});
+  }
 
   mount(root, store, {});
 })();
