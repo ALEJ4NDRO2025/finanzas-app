@@ -31,7 +31,14 @@ app.use('/api', requireAuth, require('./routes/finance'));          // 10. JWT o
 app.use('/api', notFound);
 
 // Frontend
-app.use(express.static(path.join(__dirname, '..', 'public'), { index: 'index.html', maxAge: config.isProd ? '1h' : 0 }));
+// HTML, JS y CSS: el navegador revalida en cada visita (respuesta 304 si no cambió), así un
+// despliegue nuevo se ve de inmediato. El video sí se guarda 7 días porque es pesado y casi no cambia.
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  index: 'index.html',
+  setHeaders(res, filePath) {
+    res.setHeader('Cache-Control', /[\\/]media[\\/]/.test(filePath) ? 'public, max-age=604800' : 'no-cache');
+  },
+}));
 app.use(notFound);
 app.use(errorHandler);
 
