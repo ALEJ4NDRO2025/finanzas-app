@@ -175,7 +175,7 @@ const FinanzasUI = (() => {
         h('div', { class: 'meter' }, h('span', { style: `width:${(c.total / max) * 100}%;background:${catColor(c.category)}` })))));
     }
 
-    function balanceCard(s, gmf) {
+    function balanceCard(s) {
       const rings = svg('svg', { viewBox: '0 0 300 300', class: 'rings', 'aria-hidden': 'true' });
       [140, 110, 80, 50].forEach((r) => rings.append(svg('circle', { cx: 150, cy: 150, r })));
       const pct = s.income ? Math.round((s.balance / s.income) * 100) : null;
@@ -187,8 +187,7 @@ const FinanzasUI = (() => {
           h('div', { class: 'sub' }, pct === null ? 'Registra tu primer ingreso para ver cuánto ahorras' : pct >= 0 ? `Ahorras el ${pct}% de lo que entra` : 'Este mes gastaste más de lo que entró')),
         h('div', { class: 'flows' },
           h('div', { class: 'flow' }, h('span', {}, '↓ Entró'), h('span', { class: 'v num' }, cop(s.income))),
-          h('div', { class: 'flow' }, h('span', {}, '↑ Salió'), h('span', { class: 'v num' }, cop(s.expense)),
-            s.expense ? h('span', { class: 'gmf' }, `4×1000 aprox. ${cop(gmf)}`) : null)));
+          h('div', { class: 'flow' }, h('span', {}, '↑ Salió'), h('span', { class: 'v num' }, cop(s.expense))))); 
     }
 
     /* ---------- Vistas ---------- */
@@ -196,9 +195,8 @@ const FinanzasUI = (() => {
       const [s, budgets] = await Promise.all([store.summary(state.month), store.listBudgets(state.month)]);
       const alerts = budgets.filter((b) => b.spent / b.limit_amount >= 0.8);
       s.byCategory.forEach((c) => { if (!CATS.gasto.includes(c.category)) state.customs.gasto.add(c.category); });
-      const gmf = Math.round(s.expense * 0.004);
       return [
-        balanceCard(s, gmf),
+        balanceCard(s),
         h('section', { class: 'panel', 'aria-label': 'Registrar movimiento' }, h('h2', {}, 'Registrar movimiento'), txForm()),
         alerts.length ? h('section', { class: 'panel' }, h('h2', {}, 'Ojo con estos presupuestos'),
           h('div', { class: 'badge-row' }, alerts.map((b) => h('span', { class: `chip ${b.spent > b.limit_amount ? 'over' : 'warn'}` },
