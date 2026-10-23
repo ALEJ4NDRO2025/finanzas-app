@@ -193,6 +193,27 @@ describe('Recuperación de contraseña', () => {
   });
 });
 
+describe('Versión del frontend', () => {
+  test('la página trae su versión y JS/CSS con esa versión en la URL', async () => {
+    const r = await request(app).get('/');
+    assert.equal(r.headers['cache-control'], 'no-store');
+    const v = r.text.match(/name="app-version" content="([0-9a-f]{10})"/)?.[1];
+    assert.ok(v);
+    assert.ok(r.text.includes(`/api.js?v=${v}`));
+    assert.match((await request(app).get(`/api.js?v=${v}`)).headers['cache-control'], /immutable/);
+  });
+
+  test('un cliente viejo recibe la orden de recargar y borrar caché; uno al día no', async () => {
+    const v = (await request(app).get('/')).text.match(/name="app-version" content="([0-9a-f]{10})"/)[1];
+    const viejo = await request(app).get('/api/auth/csrf');
+    assert.equal(viejo.headers['x-app-reload'], '1');
+    assert.equal(viejo.headers['clear-site-data'], '"cache"');
+    const nuevo = await request(app).get('/api/auth/csrf').set('X-App-Version', v);
+    assert.equal(nuevo.headers['x-app-reload'], undefined);
+    assert.equal(nuevo.headers['clear-site-data'], undefined);
+  });
+});
+
 describe('Finanzas', () => {
   let c;
   before(async () => {

@@ -57,4 +57,15 @@ function checkOrigin(req, res, next) {
   return next(new ApiError(403, 'Origen no permitido'));
 }
 
-module.exports = { securityHeaders, requestId, requestLogger, noStore, checkOrigin };
+// Clientes desactualizados: la página vieja sigue llamando a la API. Si no envía la versión actual,
+// el servidor le indica recargar y le pide al navegador borrar la caché de este sitio (no las cookies).
+function versionCheck(req, res, next) {
+  const current = req.app.locals.version;
+  if (current && req.get('x-app-version') !== current) {
+    res.setHeader('X-App-Reload', '1');
+    res.setHeader('Clear-Site-Data', '"cache"');
+  }
+  next();
+}
+
+module.exports = { securityHeaders, requestId, requestLogger, noStore, checkOrigin, versionCheck };

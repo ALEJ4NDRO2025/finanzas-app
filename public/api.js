@@ -6,14 +6,23 @@ const Api = (() => {
   // Si varias peticiones vencen a la vez, comparten una sola renovación.
   let refreshing = null;
   const refresh = () => (refreshing ??= fetch('/api/auth/refresh', {
-    method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': readCookie('csrf_token') || '' },
+    method: 'POST', credentials: 'same-origin', headers: { 'X-CSRF-Token': readCookie('csrf_token') || '', 'X-App-Version': VERSION },
   }).then((r) => r.ok || r.status === 409).finally(() => { refreshing = null; }));
 
+  const VERSION = document.querySelector('meta[name="app-version"]')?.content || '';
+  function checkVersion(res) {
+    if (res.headers.get('X-App-Reload') !== '1') return;
+    let last = null;
+    try { last = sessionStorage.getItem('reloadedFor'); sessionStorage.setItem('reloadedFor', VERSION); } catch { /* sin storage */ }
+    if (last !== VERSION) location.reload(); // una sola vez, por si el servidor y el cliente no coinciden
+  }
+
   async function call(method, url, body, retry = true) {
-    const headers = { Accept: 'application/json' };
+    const headers = { Accept: 'application/json', 'X-App-Version': VERSION };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (method !== 'GET') headers['X-CSRF-Token'] = readCookie('csrf_token') || '';
     const res = await fetch(url, { method, headers, credentials: 'same-origin', body: body === undefined ? undefined : JSON.stringify(body) });
+    checkVersion(res);
 
     // Token de acceso vencido (15 min): se renueva una vez con el refresh token y se repite.
     if (res.status === 401 && retry && !/^\/api\/auth\/(refresh|login|register|logout)/.test(url)) {
