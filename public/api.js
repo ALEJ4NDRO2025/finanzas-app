@@ -53,12 +53,36 @@ const Api = (() => {
   const root = document.getElementById('app');
   await Api.call('GET', '/api/auth/csrf');
 
-  const start = (user) => mount(root, Api.store, {
+  // Video de fondo solo en las pantallas de acceso. Silenciado, en bucle y con botón de pausa.
+  // Con "reducir movimiento" activado en el celular se queda la imagen fija.
+  let bg = null;
+  function showBg() {
+    if (bg) return;
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const video = h('video', { class: 'auth-video', muted: true, loop: true, playsinline: true, poster: '/media/login-poster.jpg', preload: reduce ? 'none' : 'auto', 'aria-hidden': 'true' },
+      h('source', { src: '/media/login-bg.mp4', type: 'video/mp4' }),
+      h('source', { src: '/media/login-bg.webm', type: 'video/webm' }));
+    video.muted = true;
+    const toggle = h('button', { class: 'bg-toggle', type: 'button' });
+    const sync = () => { toggle.textContent = video.paused ? 'Reproducir fondo' : 'Pausar fondo'; };
+    toggle.addEventListener('click', () => { if (video.paused) video.play().catch(() => {}); else video.pause(); });
+    video.addEventListener('play', sync); video.addEventListener('pause', sync); sync();
+    bg = h('div', { class: 'auth-bg' }, video, h('div', { class: 'auth-veil' }));
+    document.body.prepend(bg);
+    document.body.append(toggle);
+    bg.toggle = toggle;
+    if (!reduce) video.play().catch(sync);
+  }
+  function hideBg() { bg?.toggle.remove(); bg?.remove(); bg = null; }
+
+  const start = (user) => { hideBg(); return mountApp(user); };
+  const mountApp = (user) => mount(root, Api.store, {
     userName: user.name,
     onLogout: async () => { await Api.call('POST', '/api/auth/logout'); location.reload(); },
   });
 
   try { return start((await Api.call('GET', '/api/auth/me')).user); } catch { /* sin sesión */ }
+  showBg();
 
   // Pantalla que muestra el código de recuperación una sola vez, antes de entrar a la app.
   function showRecoveryCode(user, code, recovered) {

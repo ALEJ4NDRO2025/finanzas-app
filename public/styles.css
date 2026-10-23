@@ -250,3 +250,19 @@ input#tx-amount, input#bud-amount, input#goal-target { font-size: 1.15rem; font-
   .avatar { width: 38px; height: 38px; }
   .tx-row { grid-template-columns: 38px minmax(0, 1fr) auto; }
 }
+
+/* Fondo animado del acceso */
+#app { position: relative; z-index: 1; }
+.auth-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; background: var(--bg); }
+.auth-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.auth-veil { position: absolute; inset: 0; background: linear-gradient(180deg, rgb(21 22 29 / .45) 0%, rgb(21 22 29 / .7) 55%, rgb(21 22 29 / .92) 100%); }
+.auth-bg ~ #app .auth.panel, .auth-bg + #app .auth.panel {
+  background: rgb(30 32 41 / .72); border: 1px solid rgb(255 255 255 / .08);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
+}
+.bg-toggle {
+  position: fixed; z-index: 2; min-height: 40px; padding: 0 14px; font-size: 0.8rem;
+  right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  background: rgb(0 0 0 / .45); color: #fff; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.bg-toggle:hover { background: rgb(0 0 0 / .6); }
