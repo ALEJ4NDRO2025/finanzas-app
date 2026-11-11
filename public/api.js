@@ -62,7 +62,7 @@ const Api = (() => {
 
 /* Arranque: si hay sesión → app; si no → pantalla de acceso. */
 (async () => {
-  const { h, mount } = FinanzasUI;
+  const { h, mount, logo, Motion } = FinanzasUI;
   const root = document.getElementById('app');
   await Api.call('GET', '/api/auth/csrf');
 
@@ -112,9 +112,10 @@ const Api = (() => {
     const check = h('input', { type: 'checkbox', id: 'saved-check' });
     const go = h('button', { class: 'btn-primary', disabled: true, onclick: () => start(user) }, 'Entrar a mi cuenta');
     check.addEventListener('change', () => { go.disabled = !check.checked; });
-    root.replaceChildren(h('div', { class: 'wrap' }, h('main', { class: 'auth panel' },
+    root.replaceChildren(h('div', { class: 'auth-wrap' }, h('main', { class: 'auth' },
+      h('span', { class: 'auth-brand' }, logo(), 'Mis Finanzas'),
       h('h1', {}, recovered ? 'Contraseña cambiada' : 'Guarda tu código'),
-      h('p', { class: 'muted', style: 'margin:0' }, recovered
+      h('p', { class: 'auth-intro' }, recovered
         ? 'Cerramos tus otras sesiones. Tu código anterior ya no sirve; este es el nuevo.'
         : 'Si olvidas tu contraseña, con este código la recuperas. Solo lo verás esta vez.'),
       box,
@@ -122,6 +123,7 @@ const Api = (() => {
       h('p', { class: 'hint' }, 'Guárdalo en tu gestor de contraseñas o en una nota segura. Sin él no hay forma de recuperar la cuenta.'),
       h('label', { class: 'check-row', for: 'saved-check' }, check, 'Ya lo guardé'),
       go)));
+    Motion.auth(root.querySelector('.auth'));
     box.focus();
   }
 
@@ -152,15 +154,17 @@ const Api = (() => {
       h('div', { class: 'field' }, h('label', { for: 'password' }, isRec ? 'Contraseña nueva' : 'Contraseña'), pass),
       isReg || isRec ? h('p', { class: 'hint' }, 'Mínimo 10 caracteres, con mayúscula, minúscula y número.') : null,
       err, submit);
-    const intro = isReg ? 'Crea tu cuenta para llevar ingresos, gastos, presupuestos y metas.'
+    const intro = isReg ? 'Lleva ingresos, gastos, presupuestos y metas en un solo lugar.'
       : isRec ? 'Usa el código que guardaste al crear tu cuenta.' : 'Entra para ver cómo vas este mes.';
-    root.replaceChildren(h('div', { class: 'wrap' }, h('main', { class: 'auth panel' },
-      h('h1', {}, isRec ? 'Recuperar acceso' : 'Mis Finanzas'),
-      h('p', { class: 'muted', style: 'margin:0' }, intro),
+    root.replaceChildren(h('div', { class: 'auth-wrap' }, h('main', { class: 'auth' },
+      h('span', { class: 'auth-brand' }, logo(), 'Mis Finanzas'),
+      h('h1', {}, isRec ? 'Recuperar acceso' : isReg ? 'Crea tu cuenta' : 'Hola de nuevo'),
+      h('p', { class: 'auth-intro' }, intro),
       form,
       h('div', { class: 'auth-links' },
         mode === 'login' ? h('button', { class: 'btn-ghost', onclick: () => authScreen('recover') }, 'Olvidé mi contraseña') : null,
         h('button', { class: 'btn-ghost', onclick: () => authScreen(isReg || isRec ? 'login' : 'register') }, isReg || isRec ? 'Volver a entrar' : 'Crear una cuenta nueva')))));
+    Motion.auth(root.querySelector('.auth'));
     (isReg ? name : email).focus();
   }
   authScreen('login');

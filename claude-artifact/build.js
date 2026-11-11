@@ -8,11 +8,14 @@ const out = process.argv[2] || path.join(__dirname, 'mis-finanzas.html');
 fs.writeFileSync(out, `<title>Mis Finanzas</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..700&display=swap">
 <style>
 ${read('public/styles.css')}
 </style>
-<div id="app"><div class="wrap boot" aria-busy="true" aria-label="Cargando"><div class="boot-top"><div class="sk-stack"><span class="sk sk-line w-6"></span><span class="sk sk-line sk-title"></span></div><span class="sk sk-pill"></span></div><section class="balance-card sk-card"><div class="card-top"><span class="sk sk-line w-9"></span></div><div class="sk-stack"><span class="sk sk-big"></span><span class="sk sk-line w-14"></span></div><div class="flows"><span class="sk sk-flow"></span><span class="sk sk-flow"></span></div></section><section class="panel"><span class="sk sk-line sk-title"></span><span class="sk sk-input"></span><span class="sk sk-input"></span></section></div></div>
+<div id="app"><div class="app" aria-busy="true" aria-label="Cargando"><nav class="rail"><span class="sk sk-line sk-brand"></span></nav><div class="main"><header class="top"><div class="sk-stack"><span class="sk sk-line w-6"></span><span class="sk sk-line sk-title"></span></div><span class="sk sk-pill"></span></header><main class="view view-resumen"><div class="ticker sk-ticker"><span class="sk sk-line w-6"></span><span class="sk sk-line"></span></div><div class="a-hero"><section class="hero"><span class="sk sk-line w-9"></span><span class="sk sk-big"></span><span class="sk sk-line w-14"></span><span class="sk sk-meter"></span></section></div><section class="panel a-pockets"><span class="sk sk-line sk-title"></span><span class="sk sk-fig"></span><span class="sk sk-meter"></span></section></main></div></div></div>
+<script>
+${read('public/vendor/gsap-3.13.0.min.js')}
+</script>
 <script>
 ${read('public/ui.js')}
 </script>
