@@ -1,0 +1,39 @@
+plugins { id 'com.android.application' }
+
+// La firma de release viene de variables de entorno (secretos de GitHub Actions).
+// Sin ellas, se firma con la llave de depuración para poder probar.
+def ks = System.getenv('KEYSTORE_PATH')
+
+android {
+    namespace 'co.misfinanzas.app'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'co.misfinanzas.app'
+        minSdk 26
+        targetSdk 34
+        versionCode((project.findProperty('versionCode') ?: '1') as int)
+        versionName "1.${project.findProperty('versionCode') ?: '0'}"
+        buildConfigField 'String', 'APP_URL', '"https://web-production-d5e8f1.up.railway.app/"'
+    }
+    buildFeatures { buildConfig true }
+    signingConfigs {
+        release {
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig ks ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
