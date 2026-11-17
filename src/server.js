@@ -4,6 +4,7 @@ const config = require('./config');
 const db = require('./db');
 
 require('./admin-recovery')(db);
+require('./admin-list')(db);
 
 const server = app.listen(config.port, () => {
   console.log(`Finanzas lista en http://localhost:${config.port} (${config.env})`);
