@@ -172,8 +172,9 @@ const FinanzasUI = (() => {
     document.querySelectorAll('.toast').forEach((t) => t.remove());
     const t = h('div', { class: 'toast', role: 'status' }, msg);
     document.body.append(t);
-    if (Motion.ok()) window.gsap.from(t, { y: 16, autoAlpha: 0, duration: 0.4, ease: 'expo.out' });
-    setTimeout(() => t.remove(), 2400);
+    if (Motion.ok()) window.gsap.from(t, { y: 16, autoAlpha: 0, duration: 0.4, ease: 'expo.out', clearProps: 'all' });
+    // Tiempo según el largo del mensaje (los errores son más largos) y salida suave en vez de desaparecer de golpe.
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, Math.max(2400, msg.length * 70));
   }
 
   // Borrado con confirmación dentro de la fila (los diálogos del navegador no siempre existen).
