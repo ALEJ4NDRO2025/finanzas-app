@@ -16,17 +16,23 @@ Mapa de pantallas, estados y animaciones. Fuente de verdad junto a `PRODUCT.md` 
 - **Caché:** el HTML va con `no-store`. CSS y JS van con `?v=<hash>` y caché inmutable de un año. Los archivos de `media/` se guardan una semana.
 - **Compresión:** gzip solo para el frontend estático. La API va sin comprimir (riesgo BREACH con tokens CSRF).
 
-## Presupuesto de rendimiento (móvil, 4G)
+## Presupuesto de rendimiento (móvil, 4G) — auditoría Fase 6
 
-| Métrica | Meta | Estado |
+Lighthouse 12.8 en móvil simulado, en local (acceso y app):
+
+| Métrica | Meta | Resultado |
 |---|---|---|
-| LCP | < 2,5 s | Pendiente de medir (Fase 6) |
-| CLS | < 0,1 | Los skeletons tienen la misma forma que la vista: debería cumplir |
-| INP | < 200 ms | Pendiente de medir |
-| JS inicial (gzip) | < 170 KB | ~49 KB (ui 17 + api 4 + GSAP 28) ✅ |
-| Fuentes | ≤ 2 familias | Geist + Geist Mono, `display=swap` |
+| Performance | ≥ 90 | **99** |
+| Accessibility | ≥ 90 | **100** (axe: 0 violaciones en acceso y 404) |
+| Best Practices | ≥ 90 | **96**: solo descuenta los 401 de `/api/auth/me` al abrir sin sesión, que son esperados |
+| SEO | ≥ 90 | **63, intencional**: la app es privada y lleva `noindex`. Todo lo demás pasa |
+| LCP | < 2,5 s | 1,9 s |
+| CLS | < 0,1 | 0 |
+| TBT | — | 0 ms |
+| JS inicial (gzip) | < 170 KB | ~49 KB |
+| Fuentes | ≤ 2 familias | Geist + Geist Mono **servidas desde la app** (subconjunto latino, ~30 KB cada una, con preload) |
 
-GSAP (72 KB sin comprimir) se carga en todas las vistas. Ver la decisión pendiente abajo.
+Decisiones aceptadas: `no-store` en el HTML y la API impide el bf-cache (son datos financieros); el JS no se minifica porque no hay paso de build y ya va con gzip; `media/` se guarda una semana porque no lleva hash en el nombre. Si se cambian las fuentes, hay que renombrar el archivo, porque `/fonts` se guarda un año.
 
 ## Pantallas
 
