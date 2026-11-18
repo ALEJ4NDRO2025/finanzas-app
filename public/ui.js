@@ -78,6 +78,7 @@ const FinanzasUI = (() => {
     next: ['M9 6l6 6-6 6'],
     out: ['M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4', 'M10 16l-4-4 4-4', 'M6 12h10'],
     copy: ['M9 9h10v10H9z', 'M5 15V5h10'],
+    retry: ['M20 11a8 8 0 1 0-2.3 5.7', 'M20 4v7h-7'],
   };
   const icon = (name, cls = 'ic') => {
     const el = svg('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', class: cls });
@@ -171,8 +172,9 @@ const FinanzasUI = (() => {
     document.querySelectorAll('.toast').forEach((t) => t.remove());
     const t = h('div', { class: 'toast', role: 'status' }, msg);
     document.body.append(t);
-    if (Motion.ok()) window.gsap.from(t, { y: 16, autoAlpha: 0, duration: 0.4, ease: 'expo.out' });
-    setTimeout(() => t.remove(), 2400);
+    if (Motion.ok()) window.gsap.from(t, { y: 16, autoAlpha: 0, duration: 0.4, ease: 'expo.out', clearProps: 'all' });
+    // Tiempo según el largo del mensaje (los errores son más largos) y salida suave en vez de desaparecer de golpe.
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 260); }, Math.max(2400, msg.length * 70));
   }
 
   // Borrado con confirmación dentro de la fila (los diálogos del navegador no siempre existen).
@@ -846,7 +848,13 @@ const FinanzasUI = (() => {
         if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
       } catch (e) {
         clearTimeout(timer);
-        shell([h('p', { class: 'empty' }, e.message || 'No se pudieron cargar los datos.')]);
+        // Error de carga: mensaje claro, botón para reintentar y reintento solo cuando vuelve el internet.
+        const offline = !navigator.onLine || e instanceof TypeError;
+        shell([h('div', { class: 'empty', role: 'alert' },
+          h('p', {}, offline ? 'Sin conexión: no pudimos traer tus datos. Reintentamos solos cuando vuelva el internet.'
+            : (e.message || 'No se pudieron cargar los datos.')),
+          h('button', { class: 'btn-primary btn-sm', onclick: () => render({ skeleton: true, now: true }) }, icon('retry'), 'Reintentar'))]);
+        if (offline) addEventListener('online', () => render({ skeleton: true, now: true }), { once: true });
       } finally {
         busy = false;
         if (pending) { const next = pending; pending = null; render(next); }
@@ -857,6 +865,27 @@ const FinanzasUI = (() => {
     render({ skeleton: true, now: true });
     return { render };
   }
+
+  // Aviso de conexión: aparece arriba cuando se cae el internet y, al volver, dice
+  // "Conexión restablecida" en verde y se va solo. No bloquea la pantalla.
+  function netBanner() {
+    const text = h('span', {}, '');
+    const el = h('div', { class: 'net', role: 'status', 'aria-live': 'polite', 'data-state': 'hidden' }, h('span', { class: 'net-dot', 'aria-hidden': 'true' }), text);
+    document.body.append(el);
+    let t = 0;
+    const set = (online) => {
+      clearTimeout(t);
+      if (!online) { el.dataset.state = 'offline'; text.textContent = 'Sin conexión. Te avisamos cuando vuelva.'; }
+      else if (el.dataset.state === 'offline') {
+        el.dataset.state = 'online'; text.textContent = 'Conexión restablecida';
+        t = setTimeout(() => { el.dataset.state = 'hidden'; }, 2200);
+      }
+    };
+    addEventListener('offline', () => set(false));
+    addEventListener('online', () => set(true));
+    if (!navigator.onLine) set(false);
+  }
+  if (document.body) netBanner(); else addEventListener('DOMContentLoaded', netBanner, { once: true });
 
   return { mount, h, toast, logo, Motion, splitWeek, weeksOfMonth, referenceWeek };
 })();

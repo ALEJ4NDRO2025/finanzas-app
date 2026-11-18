@@ -39,15 +39,20 @@ app.use('/api', notFound);
 // La versión es un hash de los archivos del frontend: cambia sola en cada despliegue que los toque.
 const PUBLIC = path.join(__dirname, '..', 'public');
 const VERSION = crypto.createHash('sha256')
-  .update(['index.html', 'styles.css', 'ui.js', 'api.js'].map((f) => fs.readFileSync(path.join(PUBLIC, f))).join(''))
+  .update(['index.html', 'styles.css', 'ui.js', 'api.js', 'estado.js', '404.html', '500.html'].map((f) => fs.readFileSync(path.join(PUBLIC, f))).join(''))
   .digest('hex').slice(0, 10);
 const INDEX = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8').replaceAll('__V__', VERSION);
 app.locals.version = VERSION;
+// Páginas de estado con la marca: el manejador de errores las usa para el navegador (la API sigue en JSON).
+const page = (f) => fs.readFileSync(path.join(PUBLIC, f), 'utf8').replaceAll('__V__', VERSION);
+app.locals.pages = { 404: page('404.html'), 500: page('500.html') };
 
 // El HTML nunca se guarda en caché; JS y CSS llevan ?v=<hash> en su URL, así que se pueden guardar un año:
 // cuando cambian, cambia la URL y el navegador los descarga de nuevo.
 const sendIndex = (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.type('html').send(INDEX); };
 app.get(['/', '/index.html'], sendIndex);
+// Las plantillas de estado no se sirven sueltas (llevan marcadores sin reemplazar y responderían 200).
+app.get(['/404.html', '/500.html'], notFound);
 app.use(express.static(PUBLIC, {
   index: false,
   setHeaders(res, filePath, stat) {
