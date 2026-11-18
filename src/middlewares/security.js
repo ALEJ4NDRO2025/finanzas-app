@@ -11,8 +11,8 @@ const securityHeaders = helmet({
     directives: {
       'default-src': ["'self'"],
       'script-src': ["'self'"],
-      'style-src': ["'self'", 'https://fonts.googleapis.com'],
-      'font-src': ["'self'", 'https://fonts.gstatic.com'],
+      'style-src': ["'self'"],
+      'font-src': ["'self'"],
       'img-src': ["'self'", 'data:'],
       'connect-src': ["'self'"],
       'frame-ancestors': ["'none'"],

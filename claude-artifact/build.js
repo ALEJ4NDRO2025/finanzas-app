@@ -10,7 +10,7 @@ fs.writeFileSync(out, `<title>Mis Finanzas</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..700&display=swap">
 <style>
-${read('public/styles.css')}
+${read('public/styles.css').replace(/\/\* @font-face:inicio[\s\S]*?@font-face:fin \*\/\n/, '')}
 </style>
 <div id="app"><div class="app" aria-busy="true" aria-label="Cargando"><nav class="rail"><span class="sk sk-line sk-brand"></span></nav><div class="main"><header class="top"><div class="sk-stack"><span class="sk sk-line w-6"></span><span class="sk sk-line sk-title"></span></div><span class="sk sk-pill"></span></header><main class="view view-resumen"><div class="ticker sk-ticker"><span class="sk sk-line w-6"></span><span class="sk sk-line"></span></div><div class="a-hero"><section class="hero"><span class="sk sk-line w-9"></span><span class="sk sk-big"></span><span class="sk sk-line w-14"></span><span class="sk sk-meter"></span></section></div><section class="panel a-pockets"><span class="sk sk-line sk-title"></span><span class="sk sk-fig"></span><span class="sk sk-meter"></span></section></main></div></div></div>
 <script>

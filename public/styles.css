@@ -1,6 +1,10 @@
 /* Mis Finanzas — mesa de bolsa de bolsillo.
    Tinta azul-negra como la pantalla del acceso, cifras en Geist Mono, verde y coral solo para lo que sube y baja,
    ámbar de señal para las acciones y las metas. Barra lateral en pantallas anchas; barra inferior con + en celular. */
+/* @font-face:inicio — Geist y Geist Mono servidas desde la app (subconjunto latino, variables 100–900). */
+@font-face { font-family: "Geist"; src: url("/fonts/geist.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/geist-mono.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+/* @font-face:fin */
 :root {
   --bg: #0d1017;
   --surface: #141922;
@@ -16,6 +20,11 @@
   --accent: #f4c84a;
   --accent-ink: #191407;
   --violet: #8c8fff;
+  --accent-hover: #ffd968;
+  --placeholder: #7d879b;
+  --ticker-bg: #0a0d13;
+  --up-ink: #062419;
+  --down-ink: #2a0d09;
   --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --r-lg: 20px; --r-md: 14px; --r-sm: 10px;
@@ -91,7 +100,7 @@ button:active { transform: scale(var(--mk-scale-press)); }
 button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn-primary { background: var(--accent); color: var(--accent-ink); }
-.btn-primary:hover { background: #ffd968; }
+.btn-primary:hover { background: var(--accent-hover); }
 .btn-ghost { background: transparent; color: var(--muted); }
 .btn-ghost:hover { background: var(--surface-2); color: var(--fg); }
 .btn-danger { background: rgb(255 111 97 / .14); color: var(--down); }
@@ -109,7 +118,7 @@ input, select {
 input:hover, select:hover { border-color: var(--line-2); }
 input:focus, select:focus { border-color: var(--accent); background: var(--surface-3); }
 input:focus-visible, select:focus-visible { outline: none; box-shadow: 0 0 0 3px rgb(244 200 74 / .22); }
-input::placeholder { color: #7d879b; }
+input::placeholder { color: var(--placeholder); }
 input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.8); cursor: pointer; }
 
 /* ---------- Esqueleto de la app ---------- */
@@ -171,7 +180,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(.8); curs
 /* ---------- Cinta ---------- */
 .ticker {
   display: flex; align-items: stretch; min-height: 46px; overflow: hidden;
-  background: #0a0d13; border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--ticker-bg); border: 1px solid var(--line); border-radius: var(--r-md);
 }
 .ticker:focus-visible { outline-offset: 2px; }
 .ticker-tag {
@@ -364,8 +373,8 @@ form.quick .span, form.quick > .error { grid-column: 1 / -1; }
 .seg { display: flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 4px; gap: 4px; }
 .seg button { flex: 1; min-height: 40px; background: transparent; color: var(--muted); border-radius: var(--r-sm); }
 .seg button:hover { color: var(--fg); background: var(--surface-3); }
-.seg button[aria-pressed="true"].gasto { background: var(--down); color: #2a0d09; }
-.seg button[aria-pressed="true"].ingreso { background: var(--up); color: #062419; }
+.seg button[aria-pressed="true"].gasto { background: var(--down); color: var(--down-ink); }
+.seg button[aria-pressed="true"].ingreso { background: var(--up); color: var(--up-ink); }
 .seg button[data-v][aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .tx-form.gasto .field-amount input:focus { border-color: var(--down); box-shadow: 0 0 0 3px rgb(255 111 97 / .2); }
 .tx-form.ingreso .field-amount input:focus { border-color: var(--up); box-shadow: 0 0 0 3px rgb(52 211 155 / .2); }
@@ -545,10 +554,10 @@ form.quick .span, form.quick > .error { grid-column: 1 / -1; }
   transform: translate(-50%, 0); opacity: 1;
   transition-duration: var(--mk-dur-slow); transition-timing-function: var(--mk-ease-out);
 }
-.net[data-state="online"] { background: var(--up); color: #062419; }
+.net[data-state="online"] { background: var(--up); color: var(--up-ink); }
 .net-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--down); }
 .net[data-state="offline"] .net-dot { animation: net-blink var(--mk-dur-pulse) var(--mk-ease-in-out) infinite; }
-.net[data-state="online"] .net-dot { background: #062419; }
+.net[data-state="online"] .net-dot { background: var(--up-ink); }
 @keyframes net-blink { 50% { opacity: .3; } }
 
 /* ---------- Páginas de estado (404 y 500) ---------- */

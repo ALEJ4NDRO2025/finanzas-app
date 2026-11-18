@@ -74,7 +74,7 @@ const Api = (() => {
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     // Versión vertical para celular y horizontal para pantallas anchas (así no se recorta el gráfico).
     const o = window.innerWidth > window.innerHeight ? 'h' : 'v';
-    const video = h('video', { class: 'auth-video', muted: true, loop: true, playsinline: true, poster: `/media/bolsa-${o}.jpg`, preload: reduce ? 'none' : 'auto', 'aria-hidden': 'true' },
+    const video = h('video', { class: 'auth-video', muted: true, loop: true, playsinline: true, poster: `/media/bolsa-${o}.webp`, preload: reduce ? 'none' : 'auto', 'aria-hidden': 'true' },
       h('source', { src: `/media/bolsa-${o}.mp4`, type: 'video/mp4' }),
       h('source', { src: `/media/bolsa-${o}.webm`, type: 'video/webm' }));
     video.muted = true;

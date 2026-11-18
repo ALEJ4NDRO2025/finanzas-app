@@ -421,4 +421,17 @@ describe('Páginas de estado', () => {
     assert.equal(res.status, 200);
     assert.match(res.text, /Disallow: \//);
   });
+
+  test('los scripts del frontend salen con gzip, incluido api.js', async () => {
+    for (const p of ['/api.js', '/ui.js', '/styles.css']) {
+      const res = await request(app).get(p).set('Accept-Encoding', 'gzip');
+      assert.equal(res.headers['content-encoding'], 'gzip', p);
+    }
+  });
+
+  test('la CSP ya no permite fuentes ni estilos de terceros', async () => {
+    const res = await request(app).get('/');
+    const csp = res.headers['content-security-policy'];
+    assert.doesNotMatch(csp, /googleapis|gstatic/);
+  });
 });
