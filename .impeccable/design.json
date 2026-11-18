@@ -1,0 +1,431 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-18T14:02:39.280187+00:00",
+  "title": "Design System: Mis Finanzas",
+  "extensions": {
+    "colorMeta": {
+      "tinta": {
+        "role": "neutral",
+        "displayName": "Tinta",
+        "canonical": "#0d1017",
+        "tonalRamp": [
+          "#1f232e",
+          "#343d53",
+          "#485779",
+          "#5b70a0",
+          "#8191b4",
+          "#a8b1c8",
+          "#cdd2de",
+          "#f0f1f5"
+        ]
+      },
+      "superficie": {
+        "role": "neutral",
+        "displayName": "Superficie",
+        "canonical": "#141922",
+        "tonalRamp": [
+          "#1f242d",
+          "#353f52",
+          "#4a5a77",
+          "#5d749e",
+          "#8394b3",
+          "#a9b4c7",
+          "#cdd3dd",
+          "#f0f2f4"
+        ]
+      },
+      "superficie-2": {
+        "role": "neutral",
+        "displayName": "Superficie 2",
+        "canonical": "#1b212d",
+        "tonalRamp": [
+          "#1f242d",
+          "#363f51",
+          "#4b5976",
+          "#5e739d",
+          "#8493b2",
+          "#a9b3c7",
+          "#cdd3dd",
+          "#f0f2f4"
+        ]
+      },
+      "superficie-3": {
+        "role": "neutral",
+        "displayName": "Superficie 3",
+        "canonical": "#232a38",
+        "tonalRamp": [
+          "#20242d",
+          "#373f50",
+          "#4c5a75",
+          "#61749b",
+          "#8694b0",
+          "#aab3c5",
+          "#ced3dc",
+          "#f0f2f4"
+        ]
+      },
+      "linea": {
+        "role": "neutral",
+        "displayName": "Línea",
+        "canonical": "#262e3d",
+        "tonalRamp": [
+          "#20242d",
+          "#374050",
+          "#4c5a75",
+          "#61759b",
+          "#8694b0",
+          "#aab4c6",
+          "#ced3dc",
+          "#f0f2f4"
+        ]
+      },
+      "linea-2": {
+        "role": "neutral",
+        "displayName": "Línea 2",
+        "canonical": "#323b4e",
+        "tonalRamp": [
+          "#20242c",
+          "#373f4f",
+          "#4d5a74",
+          "#627499",
+          "#8794af",
+          "#abb3c5",
+          "#ced3dc",
+          "#f0f2f4"
+        ]
+      },
+      "texto": {
+        "role": "neutral",
+        "displayName": "Texto",
+        "canonical": "#edf0f6",
+        "tonalRamp": [
+          "#1d232f",
+          "#313d56",
+          "#43577e",
+          "#5470a7",
+          "#7c91b9",
+          "#a4b1cb",
+          "#cbd2df",
+          "#f0f1f5"
+        ]
+      },
+      "texto-tenue": {
+        "role": "neutral",
+        "displayName": "Texto tenue",
+        "canonical": "#96a0b5",
+        "tonalRamp": [
+          "#21252b",
+          "#3a404d",
+          "#515b70",
+          "#687693",
+          "#8b95ab",
+          "#aeb4c2",
+          "#d0d3da",
+          "#f1f2f4"
+        ]
+      },
+      "placeholder": {
+        "role": "neutral",
+        "displayName": "Placeholder",
+        "canonical": "#7d879b",
+        "tonalRamp": [
+          "#23252a",
+          "#3c414b",
+          "#555d6c",
+          "#6d788e",
+          "#8f97a7",
+          "#b0b5c0",
+          "#d1d4d9",
+          "#f1f2f3"
+        ]
+      },
+      "sube": {
+        "role": "secondary",
+        "displayName": "Verde de alza",
+        "canonical": "#34d39b",
+        "tonalRamp": [
+          "#15382b",
+          "#20674e",
+          "#289971",
+          "#2dce95",
+          "#60d6ac",
+          "#92dec3",
+          "#c1e9db",
+          "#edf8f4"
+        ]
+      },
+      "baja": {
+        "role": "secondary",
+        "displayName": "Coral de baja",
+        "canonical": "#ff6f61",
+        "tonalRamp": [
+          "#42100b",
+          "#7a160d",
+          "#b81909",
+          "#fb1701",
+          "#f64f3f",
+          "#f2887e",
+          "#f4bcb6",
+          "#faecea"
+        ]
+      },
+      "alerta": {
+        "role": "secondary",
+        "displayName": "Naranja de alerta",
+        "canonical": "#f4a640",
+        "tonalRamp": [
+          "#3f2a0e",
+          "#744a13",
+          "#ae6b13",
+          "#ed8d0e",
+          "#eca649",
+          "#ecbf84",
+          "#f0d9ba",
+          "#faf3eb"
+        ]
+      },
+      "senal": {
+        "role": "primary",
+        "displayName": "Ámbar de señal",
+        "canonical": "#f4c84a",
+        "tonalRamp": [
+          "#3f320e",
+          "#745b13",
+          "#ae8613",
+          "#ecb30f",
+          "#ecc24a",
+          "#ecd184",
+          "#f0e2ba",
+          "#f9f6eb"
+        ]
+      },
+      "senal-hover": {
+        "role": "primary",
+        "displayName": "Ámbar de señal (hover)",
+        "canonical": "#ffd968",
+        "tonalRamp": [
+          "#42340b",
+          "#7a5f0d",
+          "#b88c09",
+          "#fbbc01",
+          "#f6c83f",
+          "#f2d57e",
+          "#f4e4b6",
+          "#faf6ea"
+        ]
+      },
+      "senal-tinta": {
+        "role": "primary",
+        "displayName": "Tinta ámbar",
+        "canonical": "#191407",
+        "tonalRamp": [
+          "#362d17",
+          "#625125",
+          "#927630",
+          "#c49d37",
+          "#ceb267",
+          "#d9c797",
+          "#e6ddc4",
+          "#f7f4ee"
+        ]
+      },
+      "violeta": {
+        "role": "tertiary",
+        "displayName": "Violeta",
+        "canonical": "#8c8fff",
+        "tonalRamp": [
+          "#0b0c42",
+          "#0d107a",
+          "#090eb8",
+          "#0107fb",
+          "#3f44f6",
+          "#7e81f2",
+          "#b6b8f4",
+          "#eaebfa"
+        ]
+      }
+    },
+    "shadows": [
+      {
+        "name": "flotante",
+        "value": "0 6px 16px rgb(0 0 0 / .45)",
+        "purpose": "Botón + en celular."
+      },
+      {
+        "name": "hoja",
+        "value": "0 -12px 40px rgb(0 0 0 / .45)",
+        "purpose": "Hoja de registro (lateral: -20px 0 60px)."
+      },
+      {
+        "name": "aviso",
+        "value": "0 10px 30px rgb(0 0 0 / .45)",
+        "purpose": "Toast."
+      },
+      {
+        "name": "dialogo",
+        "value": "0 20px 60px rgb(0 0 0 / .5)",
+        "purpose": "Reporte de meta."
+      },
+      {
+        "name": "acceso",
+        "value": "0 24px 70px rgb(0 0 0 / .45)",
+        "purpose": "Tarjeta de acceso con desenfoque."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "Curva única de transiciones de estado."
+      },
+      {
+        "name": "estado",
+        "value": ".2s",
+        "purpose": "Cambios de fondo, color y borde."
+      },
+      {
+        "name": "presion",
+        "value": ".15s",
+        "purpose": "Escala 0.97 al presionar."
+      },
+      {
+        "name": "skeleton",
+        "value": "1.4s",
+        "purpose": "Brillo del skeleton."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compacto",
+        "value": "370px"
+      },
+      {
+        "name": "celular",
+        "value": "480px"
+      },
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "escritorio",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botón principal",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "La única llamada a la acción de la vista: guardar, registrar, +.",
+      "html": "<button class=\"ds-btn-primary\">Guardar movimiento</button>",
+      "css": ".ds-btn-primary{font:600 15px/1 Geist,system-ui,sans-serif;background:#f4c84a;color:#191407;border:0;border-radius:14px;min-height:44px;padding:0 18px;cursor:pointer;transition:background-color .2s cubic-bezier(.16,1,.3,1),transform .15s cubic-bezier(.16,1,.3,1)}.ds-btn-primary:hover{background:#ffd968}.ds-btn-primary:active{transform:scale(.97)}.ds-btn-primary:focus-visible{outline:2px solid #f4c84a;outline-offset:2px}"
+    },
+    {
+      "name": "Botón secundario",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Acciones de apoyo dentro de un panel.",
+      "html": "<button class=\"ds-btn\">Editar</button>",
+      "css": ".ds-btn{font:600 15px/1 Geist,system-ui,sans-serif;background:#232a38;color:#edf0f6;border:0;border-radius:14px;min-height:44px;padding:0 18px;cursor:pointer;transition:background-color .2s cubic-bezier(.16,1,.3,1)}.ds-btn:hover{background:#323b4e}.ds-btn:focus-visible{outline:2px solid #f4c84a;outline-offset:2px}"
+    },
+    {
+      "name": "Botón de peligro",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Eliminar movimientos, presupuestos o metas.",
+      "html": "<button class=\"ds-btn-danger\">Eliminar</button>",
+      "css": ".ds-btn-danger{font:600 15px/1 Geist,system-ui,sans-serif;background:rgb(255 111 97/.14);color:#ff6f61;border:0;border-radius:14px;min-height:44px;padding:0 18px;cursor:pointer}.ds-btn-danger:hover{background:rgb(255 111 97/.24)}.ds-btn-danger:focus-visible{outline:2px solid #f4c84a;outline-offset:2px}"
+    },
+    {
+      "name": "Campo de monto",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Monto grande en mono con prefijo $; se tiñe según gasto o ingreso.",
+      "html": "<label class=\"ds-amount\"><span>$</span><input inputmode=\"numeric\" placeholder=\"0\"></label>",
+      "css": ".ds-amount{position:relative;display:block;width:280px}.ds-amount span{position:absolute;left:16px;top:50%;transform:translateY(-50%);font:500 1.3rem 'Geist Mono',monospace;color:#96a0b5}.ds-amount input{width:100%;box-sizing:border-box;min-height:64px;padding:0 14px 0 40px;font:600 1.9rem 'Geist Mono',monospace;letter-spacing:-.02em;color:#edf0f6;background:#1b212d;border:1px solid #262e3d;border-radius:14px;outline:none}.ds-amount input:focus{border-color:#ff6f61;background:#232a38;box-shadow:0 0 0 3px rgb(255 111 97/.2)}"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Contenedor plano de cada bloque de la vista.",
+      "html": "<section class=\"ds-panel\"><h2>Bolsillos</h2><p>$ 1.250.000</p></section>",
+      "css": ".ds-panel{background:#141922;border:1px solid #262e3d;border-radius:20px;padding:20px;color:#edf0f6;font:450 15px/1.5 Geist,system-ui,sans-serif;width:280px}.ds-panel h2{margin:0 0 8px;font-size:1rem;font-weight:600}.ds-panel p{margin:0;font:600 1.55rem 'Geist Mono',monospace;letter-spacing:-.02em}"
+    },
+    {
+      "name": "Chip de estado",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Estado de un presupuesto o meta.",
+      "html": "<span class=\"ds-chip ds-chip-warn\">Cerca del límite</span> <span class=\"ds-chip ds-chip-over\">Pasado</span>",
+      "css": ".ds-chip{display:inline-flex;font:600 .74rem Geist,system-ui,sans-serif;padding:3px 9px;border-radius:6px;background:#232a38;color:#edf0f6}.ds-chip-warn{background:rgb(244 166 64/.15);color:#f4a640}.ds-chip-over{background:rgb(255 111 97/.15);color:#ff6f61}"
+    },
+    {
+      "name": "Navegación inferior",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "Barra de celular con + central; activa en ámbar.",
+      "html": "<nav class=\"ds-nav\"><button aria-selected=\"true\">Resumen</button><button>Movimientos</button><button class=\"ds-add\">+</button><button>Presupuestos</button><button>Metas</button></nav>",
+      "css": ".ds-nav{display:grid;grid-template-columns:repeat(5,1fr);align-items:center;gap:4px;width:375px;padding:6px;background:rgb(13 16 23/.92);border-top:1px solid #262e3d}.ds-nav button{font:600 .66rem Geist,system-ui,sans-serif;min-height:54px;background:transparent;color:#96a0b5;border:0;border-radius:14px;cursor:pointer}.ds-nav button[aria-selected=true]{color:#f4c84a}.ds-nav button:hover{color:#edf0f6}.ds-nav .ds-add{justify-self:center;width:56px;height:56px;min-height:56px;border-radius:18px;background:#f4c84a;color:#191407;font-size:1.6rem;box-shadow:0 6px 16px rgb(0 0 0/.45)}"
+    },
+    {
+      "name": "Cinta de presupuestos",
+      "kind": "custom",
+      "refersTo": "ticker",
+      "description": "Ticker de presupuestos con dirección en color de mercado.",
+      "html": "<div class=\"ds-ticker\"><span class=\"ds-tag\">Presup.</span><span class=\"ds-tk\">MERCADO <b>$ 320.000</b> <i class=\"ok\">62%</i></span><span class=\"ds-tk\">SALIDAS <b>$ 95.000</b> <i class=\"over\">108%</i></span></div>",
+      "css": ".ds-ticker{display:flex;align-items:center;gap:24px;min-height:46px;width:420px;background:#0a0d13;border:1px solid #262e3d;border-radius:14px;overflow:hidden;font:.82rem 'Geist Mono',monospace;color:#edf0f6}.ds-tag{align-self:stretch;display:flex;align-items:center;padding:0 14px;background:#141922;border-right:1px solid #262e3d;color:#f4c84a;font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase}.ds-tk{white-space:nowrap;color:#96a0b5}.ds-tk b{color:#edf0f6}.ds-tk i{font-style:normal;font-weight:600}.ds-tk .ok{color:#34d39b}.ds-tk .over{color:#ff6f61}"
+    }
+  ],
+  "narrative": {
+    "northStar": "La mesa de bolsa de bolsillo",
+    "overview": "**Creative North Star: \"La mesa de bolsa de bolsillo\"**\n\nMis Finanzas se lee como una terminal financiera reducida al tamaño de una mano: tinta azul-negra, cifras en monoespaciada tabular y color solo cuando un número sube, baja o pide atención. La cifra que manda es siempre lo disponible del mes, en grande y sin adornos. Todo lo demás (bolsillos, presupuestos, metas, movimientos) se apila en paneles planos de tono ligeramente más claro que el fondo.\n\nEs una interfaz de operación (modo Operate): densa pero respirable, pensada primero para el celular con barra inferior y botón + central, y que en pantallas anchas pasa a barra lateral y rejilla de 12 columnas. La personalidad vive en los detalles de mercado: la cinta de presupuestos que corre como un ticker, el logo de velas, el fondo de velas en el acceso.\n\nRechazos confirmados por el usuario: un diseño editorial y un fondo abstracto tipo \"aurora\".",
+    "keyCharacteristics": [
+      "Solo modo oscuro, sobre tinta azul-negra.",
+      "Los números son el contenido: Geist Mono tabular en todas las cifras.",
+      "Verde y coral significan \"sube\" y \"baja\", nunca decoración.",
+      "Ámbar de señal para la acción principal y las metas.",
+      "Profundidad por capas de tono, no por sombras.",
+      "Cada pantalla tiene un skeleton de carga con su misma forma."
+    ],
+    "rules": [
+      {
+        "name": "The Market Color Rule",
+        "body": "Verde, coral y naranja solo marcan dirección o estado de un número. Si un elemento no sube, baja ni se acerca a un límite, no lleva esos colores.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Signal Rule",
+        "body": "El ámbar es la única llamada a la acción de la pantalla. Nunca dos botones ámbar compitiendo en la misma vista.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "Toda cifra de dinero, porcentaje o fecha numérica va en Geist Mono con `tabular-nums`. Nunca en Geist.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Nada que esté en el flujo de la página lleva sombra. Si no flota sobre otra capa, se separa con tono y borde.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** poner el disponible del mes como la cifra más grande de la pantalla de Resumen.",
+      "**Do** usar Geist Mono tabular para todo número.",
+      "**Do** dar a cada pantalla nueva un skeleton con su misma forma.",
+      "**Do** mantener áreas de toque de 44 px como mínimo.",
+      "**Do** usar la curva `cubic-bezier(.16, 1, .3, 1)` para las transiciones de estado.",
+      "**Do** respetar `prefers-reduced-motion`: sin cinta animada, sin brillo de skeleton, sin transiciones."
+    ],
+    "donts": [
+      "**Don't** usar verde, coral o naranja como decoración.",
+      "**Don't** poner sombras en paneles o tarjetas que están en el flujo.",
+      "**Don't** añadir un modo claro sin rediseñar los tokens: el sistema es solo oscuro.",
+      "**Don't** volver a un estilo editorial ni a fondos abstractos tipo \"aurora\" (rechazados por el usuario).",
+      "**Don't** poner estilos ni scripts inline en el HTML: la CSP es `script-src 'self'`."
+    ]
+  }
+}
