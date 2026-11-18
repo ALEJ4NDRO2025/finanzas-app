@@ -42,12 +42,13 @@ GSAP (72 KB sin comprimir) se carga en todas las vistas. Ver la decisión pendie
 
 ## Estados del sitio (Fase 3)
 
-| Estado | Estado actual | Qué falta |
+| Estado | Estado actual | Dónde |
 |---|---|---|
-| 404 | ❌ Devuelve JSON `{"error":"Ruta no encontrada"}` | Página HTML con la marca para rutas que no son `/api` |
-| 500 | ❌ JSON | Página HTML para errores del frontend |
-| Sin conexión | ❌ No hay banner en la web | Banner cuando `navigator.onLine` cae; el APK ya tiene su propia pantalla |
-| Vacíos | ⚠️ Revisar uno por uno | Sin movimientos, sin presupuestos, sin metas, mes sin datos |
+| 404 | ✅ Página con la marca: la vela roja reemplaza el 0. Status 404. La API sigue en JSON | `public/404.html`, `src/middlewares/error.js` |
+| 500 | ✅ Página con la marca, botón para reintentar y referencia de la petición. Status 500 | `public/500.html` |
+| Sin conexión | ✅ Banner arriba cuando se cae el internet; "Conexión restablecida" en verde al volver. El APK tiene su propia pantalla | `netBanner()` en `ui.js` |
+| Error al cargar una vista | ✅ Mensaje claro, botón Reintentar y reintento automático al volver la conexión | `render()` en `ui.js` |
+| Vacíos | ✅ Movimientos, presupuestos y metas con acción para crear el primero; categorías con texto | `emptyAction()` en `ui.js` |
 | Barra de carga entre vistas | No aplica | Los skeletons cubren el cambio de vista |
 | Mantenimiento | No se necesita por ahora | — |
 

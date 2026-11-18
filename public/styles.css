@@ -35,6 +35,7 @@
   --mk-scale-press: .97;
   --mk-stagger: 40ms;
   --mk-dur-shimmer: 1.4s;   /* brillo de skeleton */
+  --mk-dur-pulse: 1.6s;     /* punto que parpadea sin conexión */
   --ease: var(--mk-ease-out);  /* alias histórico */
 
   /* Alias para snippets de transitions.dev: nunca un segundo sistema. */
@@ -527,7 +528,58 @@ form.quick .span, form.quick > .error { grid-column: 1 / -1; }
   .flows { grid-template-columns: 1fr 1fr; }
 }
 
+/* ---------- Aviso de conexión ---------- */
+.net {
+  position: fixed; z-index: 60; left: 50%; top: calc(12px + env(safe-area-inset-top, 0px));
+  display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100vw - 32px);
+  padding: 10px 16px; border-radius: 999px; background: var(--fg); color: var(--bg);
+  font-weight: 600; font-size: .9rem; box-shadow: 0 10px 30px rgb(0 0 0 / .45);
+  transform: translate(-50%, calc(-100% - 24px)); opacity: 0; pointer-events: none;
+  transition: transform var(--mk-dur-base) var(--mk-ease-in), opacity var(--mk-dur-base) linear, background-color var(--mk-dur-base) linear;
+}
+.net[data-state="offline"], .net[data-state="online"] {
+  transform: translate(-50%, 0); opacity: 1;
+  transition-duration: var(--mk-dur-slow); transition-timing-function: var(--mk-ease-out);
+}
+.net[data-state="online"] { background: var(--up); color: #062419; }
+.net-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--down); }
+.net[data-state="offline"] .net-dot { animation: net-blink var(--mk-dur-pulse) var(--mk-ease-in-out) infinite; }
+.net[data-state="online"] .net-dot { background: #062419; }
+@keyframes net-blink { 50% { opacity: .3; } }
+
+/* ---------- Páginas de estado (404 y 500) ---------- */
+.st-page {
+  min-height: 100dvh; display: grid; place-items: center;
+  padding: 48px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px));
+}
+.st-wrap { width: min(100%, 460px); display: grid; justify-items: center; gap: 16px; text-align: center; }
+.st-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; font-weight: 600; text-decoration: none; }
+.st-brand .logo { width: 22px; height: 22px; }
+.st-mark { display: flex; align-items: flex-end; justify-content: center; gap: .06em; font: 600 clamp(5.5rem, 26vw, 9rem)/.9 var(--mono); letter-spacing: -0.05em; user-select: none; }
+.st-candle { width: .62em; height: 1.05em; overflow: visible; transform-origin: 50% 100%; transform: rotate(9deg) translateY(.06em); }
+.st-candle .wick { stroke: var(--down); stroke-width: 1.6; stroke-linecap: round; }
+.st-candle .body { fill: var(--down); }
+.st-mark.err .st-candle { transform: none; }
+.st-code { font: 600 .74rem/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); padding: 4px 9px; border: 1px solid var(--line-2); border-radius: 6px; }
+.st-title { font-size: clamp(1.6rem, 6vw, 2.1rem); font-weight: 650; letter-spacing: -0.03em; line-height: 1.15; }
+.st-text { color: var(--muted); max-width: 40ch; text-wrap: pretty; }
+.st-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
+.st-actions a {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px;
+  border-radius: var(--r-md); font-weight: 600; text-decoration: none;
+  transition: background-color var(--mk-dur-base) var(--ease), color var(--mk-dur-base) var(--ease), transform var(--mk-dur-fast) var(--ease);
+}
+.st-actions a:active { transform: scale(var(--mk-scale-press)); }
+.st-ref { font: 500 .78rem var(--mono); color: var(--muted); }
+.st-rise > * { animation: st-rise var(--mk-dur-slower) var(--mk-ease-out) both; }
+.st-rise > *:nth-child(2) { animation-delay: calc(var(--mk-stagger) * 1.5); }
+.st-rise > *:nth-child(3) { animation-delay: calc(var(--mk-stagger) * 3); }
+.st-rise > *:nth-child(4) { animation-delay: calc(var(--mk-stagger) * 4.5); }
+.st-rise > *:nth-child(n+5) { animation-delay: calc(var(--mk-stagger) * 6); }
+@keyframes st-rise { from { opacity: 0; transform: translateY(10px); } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
+  .net[data-state="offline"], .net[data-state="online"] { transform: translate(-50%, 0); }
   .sk { background: var(--surface-2); }
 }

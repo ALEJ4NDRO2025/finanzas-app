@@ -386,3 +386,39 @@ describe('Finanzas', () => {
     assert.equal((await c.agent.get('/api/auth/me')).status, 401);
   });
 });
+
+describe('Páginas de estado', () => {
+  test('una ruta inexistente en el navegador devuelve la 404 con la marca y status 404', async () => {
+    const res = await request(app).get('/no-existe').set('Accept', 'text/html');
+    assert.equal(res.status, 404);
+    assert.match(res.headers['content-type'], /html/);
+    assert.match(res.text, /no está en el tablero/);
+    assert.doesNotMatch(res.text, /__V__/);
+  });
+
+  test('la API sigue respondiendo JSON aunque el cliente pida HTML', async () => {
+    const res = await request(app).get('/api/no-existe').set('Accept', 'text/html');
+    assert.ok(res.status >= 400);
+    assert.match(res.headers['content-type'], /json/);
+  });
+
+  test('un cliente que pide JSON fuera de la API recibe JSON', async () => {
+    const res = await request(app).get('/no-existe').set('Accept', 'application/json');
+    assert.equal(res.status, 404);
+    assert.match(res.headers['content-type'], /json/);
+  });
+
+  test('las plantillas no se sirven sueltas', async () => {
+    for (const p of ['/404.html', '/500.html']) {
+      const res = await request(app).get(p).set('Accept', 'text/html');
+      assert.equal(res.status, 404);
+      assert.doesNotMatch(res.text, /__REQ__/);
+    }
+  });
+
+  test('robots.txt bloquea la indexación', async () => {
+    const res = await request(app).get('/robots.txt');
+    assert.equal(res.status, 200);
+    assert.match(res.text, /Disallow: \//);
+  });
+});
